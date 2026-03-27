@@ -1,0 +1,41 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/teckel-engine",
+    "crates/teckel-datafusion",
+    "crates/teckel-api",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "Apache-2.0"
+repository = "https://github.com/eff3ct0/teckel-api"
+authors = ["Rafael Fernandez <eff3ct0>"]
+
+[workspace.dependencies]
+# From teckel-rs (parser + model)
+teckel-model = { git = "https://github.com/eff3ct0/teckel-rs" }
+teckel-parser = { git = "https://github.com/eff3ct0/teckel-rs" }
+
+# DataFusion + Arrow
+datafusion = "44"
+arrow = { version = "54", features = ["prettyprint"] }
+
+# Graph
+petgraph = "0.6"
+
+# Async
+tokio = { version = "1.35", features = ["full"] }
+async-trait = "0.1"
+
+# Error handling
+thiserror = "2"
+
+# Logging
+tracing = "0.1"
+
+# Internal crates
+teckel-engine = { path = "crates/teckel-engine" }
+teckel-datafusion = { path = "crates/teckel-datafusion" }

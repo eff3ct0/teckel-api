@@ -1,0 +1,17 @@
+[package]
+name = "teckel-api"
+description = "High-level API for parsing and executing Teckel v2.0 pipelines"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+teckel-model = { workspace = true }
+teckel-parser = { workspace = true }
+teckel-engine = { workspace = true }
+teckel-datafusion = { workspace = true }
+tokio = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }

@@ -1,0 +1,16 @@
+[package]
+name = "teckel-engine"
+description = "Engine-agnostic pipeline orchestration: Backend trait, DAG executor, and dry-run for Teckel v2.0"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+teckel-model = { workspace = true }
+petgraph = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
