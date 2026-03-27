@@ -4,6 +4,7 @@ members = [
     "crates/teckel-engine",
     "crates/teckel-datafusion",
     "crates/teckel-api",
+    "crates/teckel-server",
 ]
 
 [workspace.package]
@@ -36,6 +37,19 @@ thiserror = "2"
 # Logging
 tracing = "0.1"
 
+# Web server
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+dashmap = "6"
+tokio-util = "0.7"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+chrono = { version = "0.4", features = ["serde"] }
+num_cpus = "1"
+
 # Internal crates
 teckel-engine = { path = "crates/teckel-engine" }
 teckel-datafusion = { path = "crates/teckel-datafusion" }
+teckel-api = { path = "crates/teckel-api" }
