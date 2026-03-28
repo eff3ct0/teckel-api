@@ -3,7 +3,7 @@
 //! Each DataFrame is represented as a `RemoteRef` (opaque handle ID on the worker).
 //! The actual data never leaves the worker — only handles are exchanged.
 
-use crate::proto::{self, pipeline_service_client::PipelineServiceClient};
+use crate::proto::{self, teckel_service_client::TeckelServiceClient};
 use async_trait::async_trait;
 use std::collections::{BTreeMap, HashMap};
 use teckel_engine::Backend;
@@ -21,7 +21,7 @@ pub struct RemoteRef {
 
 /// Backend that delegates execution to a remote gRPC worker.
 pub struct RemoteBackend {
-    client: PipelineServiceClient<Channel>,
+    client: TeckelServiceClient<Channel>,
     session_id: String,
 }
 
@@ -34,7 +34,7 @@ impl RemoteBackend {
             .await
             .map_err(|e| TeckelError::Execution(format!("failed to connect to worker: {e}")))?;
 
-        let mut client = PipelineServiceClient::new(channel);
+        let mut client = TeckelServiceClient::new(channel);
 
         let response = client
             .create_session(proto::CreateSessionRequest {
