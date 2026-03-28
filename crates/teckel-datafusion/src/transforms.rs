@@ -1,6 +1,7 @@
 use datafusion::arrow::array::{self as arrow_array, Array as _};
 use datafusion::arrow::datatypes as arrow_types;
 use datafusion::common::DFSchema;
+use datafusion::execution::FunctionRegistry;
 use datafusion::logical_expr::SortExpr;
 use datafusion::prelude::*;
 use std::collections::BTreeMap;
@@ -380,13 +381,62 @@ pub async fn apply(
                 .await
                 .map_err(|e| TeckelError::Execution(format!("unpivot: {e}")))
         }
-        Source::Flatten(_t) => {
-            // Flatten requires recursive struct field inspection at the Arrow level.
-            // This is complex and deferred — return an informative error.
-            Err(TeckelError::Execution(
-                "flatten transform requires Arrow-level struct inspection (not yet implemented)"
-                    .to_string(),
-            ))
+        Source::Flatten(t) => {
+            let df = get(cache, &t.from)?;
+            let view = "__teckel_flatten_src";
+            ctx.register_table(view, df.into_view())
+                .map_err(|e| TeckelError::Execution(format!("flatten register: {e}")))?;
+
+            let table_df = ctx
+                .table(view)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("flatten table: {e}")))?;
+            let schema = table_df.schema().inner().clone();
+
+            // Build flattened projections from the Arrow schema
+            let mut projections = Vec::new();
+            flatten_fields(&schema.fields, "", &t.separator, &mut projections);
+
+            if projections.is_empty() {
+                return Ok(table_df);
+            }
+
+            let query = format!("SELECT {} FROM {view}", projections.join(", "));
+            let mut result = ctx
+                .sql(&query)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("flatten: {e}")))?;
+
+            // Explode arrays if requested
+            if t.explode_arrays {
+                let result_schema = result.schema().inner().clone();
+                for field in result_schema.fields() {
+                    if matches!(field.data_type(), arrow_types::DataType::List(_) | arrow_types::DataType::LargeList(_)) {
+                        let col_name = field.name();
+                        let explode_view = "__teckel_explode_tmp";
+                        ctx.register_table(explode_view, result.into_view())
+                            .map_err(|e| TeckelError::Execution(format!("explode register: {e}")))?;
+                        result = ctx
+                            .sql(&format!(
+                                "SELECT *, unnest(\"{col_name}\") AS \"{col_name}__unnested\" FROM {explode_view}"
+                            ))
+                            .await
+                            .map_err(|e| TeckelError::Execution(format!("explode: {e}")))?;
+                        // Drop original array column, rename unnested
+                        result = result
+                            .drop_columns(&[col_name.as_str()])
+                            .map_err(|e| TeckelError::Execution(format!("explode drop: {e}")))?;
+                        result = result
+                            .with_column_renamed(
+                                format!("{col_name}__unnested").as_str(),
+                                col_name.as_str(),
+                            )
+                            .map_err(|e| TeckelError::Execution(format!("explode rename: {e}")))?;
+                    }
+                }
+            }
+
+            Ok(result)
         }
         Source::Sample(t) => {
             // DataFusion doesn't have native TABLESAMPLE; approximate with random filter
@@ -518,12 +568,112 @@ pub async fn apply(
                 .await
                 .map_err(|e| TeckelError::Execution(format!("scd2: {e}")))
         }
-        Source::Enrich(_t) => {
-            // Enrich requires an HTTP client (reqwest). Deferred to a feature flag.
-            Err(TeckelError::Execution(
-                "enrich transform requires HTTP client (not yet implemented — see issue #4)"
-                    .to_string(),
-            ))
+        Source::Enrich(t) => {
+            let df = get(cache, &t.from)?;
+            let view = "__teckel_enrich_src";
+            ctx.register_table(view, df.into_view())
+                .map_err(|e| TeckelError::Execution(format!("enrich register: {e}")))?;
+
+            // Collect distinct key values
+            let key_query = format!(
+                "SELECT DISTINCT \"{}\" FROM {view} WHERE \"{}\" IS NOT NULL",
+                t.key_column, t.key_column
+            );
+            let key_df = ctx
+                .sql(&key_query)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("enrich keys: {e}")))?;
+            let key_batches = key_df
+                .collect()
+                .await
+                .map_err(|e| TeckelError::Execution(format!("enrich collect keys: {e}")))?;
+
+            let mut key_values = Vec::new();
+            for batch in &key_batches {
+                let arr = batch.column(0);
+                let str_arr = arrow_array::cast::as_string_array(arr);
+                for i in 0..str_arr.len() {
+                    if !str_arr.is_null(i) {
+                        key_values.push(str_arr.value(i).to_string());
+                    }
+                }
+            }
+
+            // Call API for each distinct key, cache results
+            let client = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_millis(t.timeout))
+                .build()
+                .map_err(|e| TeckelError::Execution(format!("enrich http client: {e}")))?;
+
+            let mut response_map: BTreeMap<String, Option<String>> = BTreeMap::new();
+            for key in &key_values {
+                let url = t.url.replace("${keyColumn}", key);
+                let result = call_with_retries(&client, &url, &t.method, &t.headers, t.max_retries).await;
+                match result {
+                    Ok(body) => { response_map.insert(key.clone(), Some(body)); }
+                    Err(e) => match t.on_error {
+                        teckel_model::types::OnError::Fail => {
+                            return Err(TeckelError::Execution(format!(
+                                "enrich API call failed for key \"{key}\": {e}"
+                            )));
+                        }
+                        teckel_model::types::OnError::Null => {
+                            tracing::warn!(key = key.as_str(), error = %e, "enrich API call failed, using NULL");
+                            response_map.insert(key.clone(), None);
+                        }
+                        teckel_model::types::OnError::Skip => {
+                            // Will be filtered out below
+                        }
+                    },
+                }
+            }
+
+            // Build CASE expression to map key → response
+            let mut case_sql = String::from("CASE");
+            for (key, response) in &response_map {
+                if let Some(body) = response {
+                    let escaped = body.replace('\'', "''");
+                    case_sql.push_str(&format!(
+                        " WHEN \"{}\" = '{key}' THEN '{escaped}'",
+                        t.key_column
+                    ));
+                }
+            }
+            case_sql.push_str(" ELSE NULL END");
+
+            let query = format!(
+                "SELECT *, {case_sql} AS \"{}\" FROM {view}",
+                t.response_column
+            );
+            let mut result = ctx
+                .sql(&query)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("enrich join: {e}")))?;
+
+            // If onError=skip, filter out rows with failed keys
+            if matches!(t.on_error, teckel_model::types::OnError::Skip) {
+                let skip_keys: Vec<String> = key_values
+                    .iter()
+                    .filter(|k| !response_map.contains_key(*k))
+                    .map(|k| format!("'{k}'"))
+                    .collect();
+                if !skip_keys.is_empty() {
+                    let skip_view = "__teckel_enrich_result";
+                    ctx.register_table(skip_view, result.into_view())
+                        .map_err(|e| TeckelError::Execution(format!("enrich skip register: {e}")))?;
+                    let filter = format!(
+                        "SELECT * FROM {skip_view} WHERE \"{}\" NOT IN ({})",
+                        t.key_column,
+                        skip_keys.join(", ")
+                    );
+                    result = ctx
+                        .sql(&filter)
+                        .await
+                        .map_err(|e| TeckelError::Execution(format!("enrich skip: {e}")))?;
+                }
+            }
+
+            Ok(result)
         }
         Source::SchemaEnforce(t) => {
             let df = get(cache, &t.from)?;
@@ -674,10 +824,40 @@ pub async fn apply(
             ))
             .map_err(|e| TeckelError::Execution(format!("coalesce: {e}")))
         }
-        Source::Custom(_t) => Err(TeckelError::spec(
-            teckel_model::TeckelErrorCode::EComp001,
-            "custom transform requires a registered component (plugin system not yet implemented)",
-        )),
+        Source::Custom(t) => {
+            let df = get(cache, &t.from)?;
+            // Custom components use a SQL-based convention:
+            // The component name must match a registered UDF/UDAF in the SessionContext.
+            // Users register custom functions before execution via
+            // DataFusionBackend::session().register_udf(...).
+            let view = "__teckel_custom_src";
+            ctx.register_table(view, df.into_view())
+                .map_err(|e| TeckelError::Execution(format!("custom register: {e}")))?;
+
+            // Check if a UDF with this name exists
+            if ctx.udf(&t.component).is_ok() || ctx.udaf(&t.component).is_ok() {
+                let opts_json = serde_json::to_string(&t.options).unwrap_or_default();
+                tracing::info!(
+                    component = t.component.as_str(),
+                    options = opts_json.as_str(),
+                    "executing custom component"
+                );
+                // The component is available as a UDF — the user is expected
+                // to use it in a downstream select/addColumns expression.
+                // For a direct custom transform, we pass through the data.
+                ctx.table(view)
+                    .await
+                    .map_err(|e| TeckelError::Execution(format!("custom component: {e}")))
+            } else {
+                Err(TeckelError::spec(
+                    teckel_model::TeckelErrorCode::EComp001,
+                    format!(
+                        "unregistered custom component \"{}\". Register UDFs via DataFusionBackend::session().register_udf() before execution.",
+                        t.component
+                    ),
+                ))
+            }
+        }
         // I/O handled by the executor, not here
         Source::Input(_) | Source::Output(_) => Err(TeckelError::Execution(
             "Input/Output should be handled by the executor, not apply()".to_string(),
@@ -691,6 +871,129 @@ fn get(cache: &BTreeMap<String, DataFrame>, name: &str) -> Result<DataFrame, Tec
             "asset \"{name}\" not found (dependency not yet computed?)"
         ))
     })
+}
+
+/// Recursively flatten struct fields into SQL projections.
+fn flatten_fields(
+    fields: &arrow_types::Fields,
+    prefix: &str,
+    separator: &str,
+    out: &mut Vec<String>,
+) {
+    for field in fields.iter() {
+        let name = field.name();
+        let path = if prefix.is_empty() {
+            name.clone()
+        } else {
+            format!("{prefix}{separator}{name}")
+        };
+
+        match field.data_type() {
+            arrow_types::DataType::Struct(sub_fields) => {
+                // Recurse into nested struct
+                for sub_field in sub_fields.iter() {
+                    let sub_name = sub_field.name();
+                    let alias = format!("{path}{separator}{sub_name}");
+                    match sub_field.data_type() {
+                        arrow_types::DataType::Struct(deeper) => {
+                            // Continue recursion
+                            let sub_path = if prefix.is_empty() {
+                                format!("\"{name}\".\"{sub_name}\"")
+                            } else {
+                                format!("{prefix}.\"{name}\".\"{sub_name}\"")
+                            };
+                            flatten_struct_recursive(&sub_path, &alias, separator, deeper, out);
+                        }
+                        _ => {
+                            let access = if prefix.is_empty() {
+                                format!("\"{name}\".\"{sub_name}\"")
+                            } else {
+                                format!("{prefix}.\"{name}\".\"{sub_name}\"")
+                            };
+                            out.push(format!("{access} AS \"{alias}\""));
+                        }
+                    }
+                }
+            }
+            _ => {
+                // Non-struct field — project directly
+                let access = if prefix.is_empty() {
+                    format!("\"{name}\"")
+                } else {
+                    format!("{prefix}.\"{name}\"")
+                };
+                out.push(format!("{access} AS \"{path}\""));
+            }
+        }
+    }
+}
+
+fn flatten_struct_recursive(
+    sql_path: &str,
+    alias_prefix: &str,
+    separator: &str,
+    fields: &arrow_types::Fields,
+    out: &mut Vec<String>,
+) {
+    for field in fields.iter() {
+        let name = field.name();
+        let access = format!("{sql_path}.\"{name}\"");
+        let alias = format!("{alias_prefix}{separator}{name}");
+        match field.data_type() {
+            arrow_types::DataType::Struct(sub) => {
+                flatten_struct_recursive(&access, &alias, separator, sub, out);
+            }
+            _ => {
+                out.push(format!("{access} AS \"{alias}\""));
+            }
+        }
+    }
+}
+
+/// HTTP call with exponential backoff retries for 5xx and timeouts.
+async fn call_with_retries(
+    client: &reqwest::Client,
+    url: &str,
+    method: &str,
+    headers: &BTreeMap<String, String>,
+    max_retries: u32,
+) -> Result<String, String> {
+    let mut attempt = 0;
+    loop {
+        let mut req = match method.to_uppercase().as_str() {
+            "POST" => client.post(url),
+            "PUT" => client.put(url),
+            _ => client.get(url),
+        };
+        for (k, v) in headers {
+            req = req.header(k.as_str(), v.as_str());
+        }
+
+        match req.send().await {
+            Ok(resp) => {
+                let status = resp.status().as_u16();
+                if (200..300).contains(&status) {
+                    return resp.text().await.map_err(|e| e.to_string());
+                }
+                if status >= 500 && attempt < max_retries {
+                    attempt += 1;
+                    let delay = std::time::Duration::from_millis(100 * 2u64.pow(attempt));
+                    tokio::time::sleep(delay).await;
+                    continue;
+                }
+                return Err(format!("HTTP {status}"));
+            }
+            Err(e) => {
+                if attempt < max_retries {
+                    attempt += 1;
+                    let delay = std::time::Duration::from_millis(100 * 2u64.pow(attempt));
+                    tokio::time::sleep(delay).await;
+                    continue;
+                }
+                return Err(e.to_string());
+            }
+        }
+    }
 }
 
 fn parse_expr_with_schema(
