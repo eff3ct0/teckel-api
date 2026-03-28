@@ -5,5 +5,5 @@ pub mod proto {
 }
 
 pub use backend::RemoteBackend;
-pub use proto::pipeline_service_client::PipelineServiceClient;
-pub use proto::pipeline_service_server::{PipelineService, PipelineServiceServer};
+pub use proto::teckel_service_client::TeckelServiceClient;
+pub use proto::teckel_service_server::{TeckelService, TeckelServiceServer};

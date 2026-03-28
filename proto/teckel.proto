@@ -1,13 +1,43 @@
 syntax = "proto3";
 package teckel.v1;
 
-// Teckel Pipeline Execution Service — Spark Connect-style gRPC protocol.
+// Teckel Pipeline Service — unified gRPC API for the Teckel UI and clients.
 //
-// The client creates a session, submits individual operations (read, apply, write),
-// and the worker maintains a DataFrame cache. This allows the client-side executor
-// to drive the DAG while the heavy computation runs on the worker.
+// Two usage modes:
+// 1. High-level: ValidatePipeline, ExplainPipeline, SubmitJob, GetJob, etc.
+//    (used by the UI and CLI)
+// 2. Low-level (Spark Connect-style): CreateSession + ReadInput/ApplyTransform/WriteOutput
+//    (used by programmatic clients for fine-grained control)
 
-service PipelineService {
+service TeckelService {
+  // ── High-level API (used by UI) ──────────────────────────
+
+  // Health check.
+  rpc Health(HealthRequest) returns (HealthResponse);
+
+  // Validate a pipeline YAML without executing.
+  rpc ValidatePipeline(PipelineRequest) returns (ValidateResponse);
+
+  // Generate a human-readable execution plan.
+  rpc ExplainPipeline(PipelineRequest) returns (ExplainResponse);
+
+  // Submit a pipeline for async execution. Returns immediately with a job ID.
+  rpc SubmitJob(PipelineRequest) returns (SubmitJobResponse);
+
+  // Get the status of a job.
+  rpc GetJob(GetJobRequest) returns (JobResponse);
+
+  // Wait (long-poll) until a job reaches a terminal state.
+  rpc WaitForJob(WaitForJobRequest) returns (JobResponse);
+
+  // Cancel a running or queued job.
+  rpc CancelJob(CancelJobRequest) returns (CancelJobResponse);
+
+  // List all jobs.
+  rpc ListJobs(ListJobsRequest) returns (ListJobsResponse);
+
+  // ── Low-level Spark Connect-style API ────────────────────
+
   // Create a new execution session on the worker.
   rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
 
@@ -23,20 +53,80 @@ service PipelineService {
   // Write a DataFrame to an output destination.
   rpc WriteOutput(WriteOutputRequest) returns (WriteOutputResponse);
 
-  // Submit a full pipeline for execution (alternative to per-op mode).
+  // Submit a full pipeline for synchronous execution on a session.
   rpc ExecutePipeline(ExecutePipelineRequest) returns (ExecutePipelineResponse);
-
-  // Get the status of a running pipeline.
-  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
-
-  // Cancel a running pipeline.
-  rpc CancelPipeline(CancelPipelineRequest) returns (CancelPipelineResponse);
 }
 
-// --- Session management ---
+// ═══════════════════════════════════════════════════════════
+// High-level API messages
+// ═══════════════════════════════════════════════════════════
+
+message HealthRequest {}
+
+message HealthResponse {
+  string status = 1;
+  string version = 2;
+}
+
+message PipelineRequest {
+  string yaml = 1;
+  map<string, string> variables = 2;
+}
+
+message ValidateResponse {
+  bool valid = 1;
+  string error = 2;  // Empty if valid.
+}
+
+message ExplainResponse {
+  string plan = 1;
+}
+
+message SubmitJobResponse {
+  string job_id = 1;
+  string status = 2;  // "queued"
+}
+
+message GetJobRequest {
+  string job_id = 1;
+}
+
+message WaitForJobRequest {
+  string job_id = 1;
+  uint32 timeout_seconds = 2;  // Default: 300
+}
+
+message JobResponse {
+  string id = 1;
+  string status = 2;  // queued, running, completed, failed, cancelled
+  string error = 3;
+  string created_at = 4;   // ISO 8601
+  string started_at = 5;   // ISO 8601, empty if not started
+  string completed_at = 6; // ISO 8601, empty if not completed
+  int64 duration_ms = 7;   // -1 if not completed
+}
+
+message CancelJobRequest {
+  string job_id = 1;
+}
+
+message CancelJobResponse {
+  bool cancelled = 1;
+  string status = 2;
+}
+
+message ListJobsRequest {}
+
+message ListJobsResponse {
+  repeated JobResponse jobs = 1;
+}
+
+// ═══════════════════════════════════════════════════════════
+// Low-level Spark Connect-style messages
+// ═══════════════════════════════════════════════════════════
 
 message CreateSessionRequest {
-  string backend = 1;  // "datafusion", "polars", etc.
+  string backend = 1;
 }
 
 message CreateSessionResponse {
@@ -49,8 +139,6 @@ message CloseSessionRequest {
 
 message CloseSessionResponse {}
 
-// --- Per-operation mode (Spark Connect-style) ---
-
 message ReadInputRequest {
   string session_id = 1;
   string asset_name = 2;
@@ -61,16 +149,14 @@ message ReadInputRequest {
 
 message DataFrameResponse {
   string session_id = 1;
-  string handle_id = 2;  // Opaque reference to a DataFrame on the worker.
-  int64 row_count = 3;   // Approximate row count (-1 if unknown).
+  string handle_id = 2;
+  int64 row_count = 3;
 }
 
 message ApplyTransformRequest {
   string session_id = 1;
   string asset_name = 2;
-  // The full Source serialized as JSON. The worker deserializes and applies.
   string source_json = 3;
-  // Map of input handle IDs (asset_name → handle_id from previous ops).
   map<string, string> input_handles = 4;
 }
 
@@ -87,39 +173,15 @@ message WriteOutputResponse {
   int64 rows_written = 1;
 }
 
-// --- Full pipeline mode ---
-
 message ExecutePipelineRequest {
   string session_id = 1;
-  // The full pipeline YAML (worker parses and executes).
   string yaml = 2;
   map<string, string> variables = 3;
 }
 
 message ExecutePipelineResponse {
   string job_id = 1;
-  string status = 2;  // "completed", "failed"
-  string error = 3;   // Empty on success.
-  int64 duration_ms = 4;
-}
-
-// --- Status and cancellation ---
-
-message GetStatusRequest {
-  string job_id = 1;
-}
-
-message GetStatusResponse {
-  string job_id = 1;
-  string status = 2;  // "running", "completed", "failed", "cancelled"
+  string status = 2;
   string error = 3;
   int64 duration_ms = 4;
-}
-
-message CancelPipelineRequest {
-  string job_id = 1;
-}
-
-message CancelPipelineResponse {
-  bool cancelled = 1;
 }
