@@ -1,0 +1,19 @@
+[package]
+name = "teckel-polars"
+description = "Polars backend for high-performance single-machine Teckel pipeline execution"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+teckel-model = { workspace = true }
+teckel-engine = { workspace = true }
+polars = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+reqwest = { workspace = true }
+serde_json = { workspace = true }
