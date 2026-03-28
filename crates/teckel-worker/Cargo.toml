@@ -1,0 +1,23 @@
+[package]
+name = "teckel-worker"
+description = "gRPC worker service for distributed Teckel pipeline execution"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+teckel-model = { workspace = true }
+teckel-engine = { workspace = true }
+teckel-datafusion = { workspace = true }
+teckel-api = { workspace = true }
+teckel-remote = { workspace = true }
+tonic = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+uuid = { workspace = true }
+dashmap = { workspace = true }
+serde_json = { workspace = true }
+num_cpus = { workspace = true }
