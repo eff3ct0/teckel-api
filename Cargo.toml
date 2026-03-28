@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/teckel-engine",
     "crates/teckel-datafusion",
+    "crates/teckel-polars",
     "crates/teckel-api",
     "crates/teckel-server",
     "crates/teckel-remote",
@@ -40,6 +41,9 @@ reqwest = { version = "0.12", features = ["json"] }
 tonic = "0.13"
 prost = "0.13"
 
+# Polars
+polars = { version = "0.46", features = ["lazy", "csv", "parquet", "json", "dtype-struct", "dtype-array", "concat_str", "is_in", "strings", "temporal", "round_series", "abs", "rank", "unique_counts", "sql", "pivot"] }
+
 # Error handling
 thiserror = "2"
 
@@ -62,4 +66,5 @@ num_cpus = "1"
 teckel-engine = { path = "crates/teckel-engine" }
 teckel-datafusion = { path = "crates/teckel-datafusion" }
 teckel-api = { path = "crates/teckel-api" }
+teckel-polars = { path = "crates/teckel-polars" }
 teckel-remote = { path = "crates/teckel-remote" }
