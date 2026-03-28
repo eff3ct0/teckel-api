@@ -24,8 +24,29 @@ pub async fn etl_with<B: Backend + 'static>(
     backend: B,
 ) -> Result<(), TeckelError> {
     let pipeline = teckel_parser::parse(yaml, variables)?;
-    let executor = PipelineExecutor::new(backend);
-    executor.execute(&pipeline.context).await
+
+    // Pre-execution hooks (§16)
+    teckel_engine::hooks::run_pre_hooks(&pipeline.hooks, None).await?;
+
+    let result = {
+        let executor = PipelineExecutor::new(backend);
+        executor.execute(&pipeline.context).await
+    };
+
+    // Post-execution hooks (§16) — always run, regardless of pipeline result
+    let status = if result.is_ok() { "completed" } else { "failed" };
+    teckel_engine::hooks::run_post_hooks(&pipeline.hooks, status, None).await;
+
+    // Quality suites (§17) — run after successful execution
+    if result.is_ok() && !pipeline.quality.is_empty() {
+        tracing::info!(suites = pipeline.quality.len(), "running quality suites");
+        // Quality checks require a query function — for now, log that suites
+        // are defined. Full DataFusion integration requires registering
+        // computed DataFrames as views and running SQL queries against them.
+        tracing::info!("quality suite execution requires backend-specific query function");
+    }
+
+    result
 }
 
 /// Parse a Teckel YAML pipeline and return a human-readable execution plan.

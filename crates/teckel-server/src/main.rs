@@ -57,6 +57,7 @@ async fn main() {
             "/api/jobs/{id}",
             routing::get(routes::get_job).delete(routes::cancel_job),
         )
+        .route("/api/jobs/{id}/wait", routing::get(routes::wait_job))
         .layer(cors)
         .with_state(state);
 

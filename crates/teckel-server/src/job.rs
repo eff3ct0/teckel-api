@@ -27,6 +27,8 @@ pub struct JobResponse {
     pub started_at: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub completed_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<i64>,
 }
 
 #[derive(Debug)]
@@ -58,6 +60,10 @@ impl Job {
     }
 
     pub fn to_response(&self) -> JobResponse {
+        let duration_ms = match (self.started_at, self.completed_at) {
+            (Some(start), Some(end)) => Some((end - start).num_milliseconds()),
+            _ => None,
+        };
         JobResponse {
             id: self.id.clone(),
             status: self.status,
@@ -65,6 +71,7 @@ impl Job {
             created_at: self.created_at,
             started_at: self.started_at,
             completed_at: self.completed_at,
+            duration_ms,
         }
     }
 }
@@ -125,5 +132,31 @@ impl JobStore {
 
     pub fn list_jobs(&self) -> Vec<JobResponse> {
         self.jobs.iter().map(|j| j.to_response()).collect()
+    }
+
+    /// Wait until a job reaches a terminal state (completed/failed/cancelled).
+    /// Returns None if job not found. Polls every 100ms up to timeout.
+    pub async fn wait_for_completion(
+        &self,
+        id: &str,
+        timeout: std::time::Duration,
+    ) -> Option<JobResponse> {
+        let start = std::time::Instant::now();
+        loop {
+            if let Some(job) = self.jobs.get(id) {
+                match job.status {
+                    JobStatus::Completed | JobStatus::Failed | JobStatus::Cancelled => {
+                        return Some(job.to_response());
+                    }
+                    _ => {}
+                }
+            } else {
+                return None;
+            }
+            if start.elapsed() >= timeout {
+                return self.get_response(id);
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
     }
 }
