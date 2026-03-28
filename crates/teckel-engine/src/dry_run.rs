@@ -112,7 +112,7 @@ fn source_op_name(source: &Source) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use teckel_model::asset::Asset;
+    use teckel_model::asset::{Asset, AssetMetadata};
     use teckel_model::source::*;
 
     #[test]
@@ -127,6 +127,7 @@ mod tests {
                         path: "data.csv".to_string(),
                         options: Default::default(),
                     }),
+                    metadata: AssetMetadata::default(),
                 },
             ),
             (
@@ -137,6 +138,7 @@ mod tests {
                         from: "src".to_string(),
                         filter: "x > 0".to_string(),
                     }),
+                    metadata: AssetMetadata::default(),
                 },
             ),
         ]

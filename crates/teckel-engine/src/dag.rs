@@ -91,7 +91,7 @@ impl PipelineDag {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use teckel_model::asset::Asset;
+    use teckel_model::asset::{Asset, AssetMetadata};
     use teckel_model::source::*;
 
     fn input_asset(name: &str) -> (String, Asset) {
@@ -104,6 +104,7 @@ mod tests {
                     path: format!("{name}.csv"),
                     options: Default::default(),
                 }),
+                metadata: AssetMetadata::default(),
             },
         )
     }
@@ -117,6 +118,7 @@ mod tests {
                     from: from.to_string(),
                     filter: "x > 0".to_string(),
                 }),
+                metadata: AssetMetadata::default(),
             },
         )
     }
@@ -165,6 +167,7 @@ mod tests {
                         sources: vec!["b".to_string(), "c".to_string()],
                         all: true,
                     }),
+                    metadata: AssetMetadata::default(),
                 },
             ),
         ]

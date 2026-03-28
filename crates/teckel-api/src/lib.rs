@@ -18,29 +18,29 @@ pub async fn etl(yaml: &str, variables: &BTreeMap<String, String>) -> Result<(),
 ///
 /// This is the extension point: pass a `DataFusionBackend` for local execution,
 /// or a future `RemoteBackend` for distributed execution via gRPC/K8s workers.
-pub async fn etl_with<B: Backend>(
+pub async fn etl_with<B: Backend + 'static>(
     yaml: &str,
     variables: &BTreeMap<String, String>,
     backend: B,
 ) -> Result<(), TeckelError> {
-    let context = teckel_parser::parse(yaml, variables)?;
+    let pipeline = teckel_parser::parse(yaml, variables)?;
     let executor = PipelineExecutor::new(backend);
-    executor.execute(&context).await
+    executor.execute(&pipeline.context).await
 }
 
 /// Parse a Teckel YAML pipeline and return a human-readable execution plan.
 ///
 /// Does not execute anything — useful for debugging and visualization.
 pub fn explain(yaml: &str, variables: &BTreeMap<String, String>) -> Result<String, TeckelError> {
-    let context = teckel_parser::parse(yaml, variables)?;
-    dry_run::explain(&context)
+    let pipeline = teckel_parser::parse(yaml, variables)?;
+    dry_run::explain(&pipeline.context)
 }
 
 /// Parse and validate a Teckel YAML pipeline without executing.
 ///
 /// Returns `Ok(())` if the pipeline is valid, or a validation error.
 pub fn validate(yaml: &str, variables: &BTreeMap<String, String>) -> Result<(), TeckelError> {
-    let _context = teckel_parser::parse(yaml, variables)?;
+    let _pipeline = teckel_parser::parse(yaml, variables)?;
     Ok(())
 }
 
