@@ -146,3 +146,30 @@ pub async fn list_jobs(State(state): State<AppState>) -> impl IntoResponse {
     let jobs = state.store.list_jobs();
     (StatusCode::OK, Json(serde_json::json!({ "jobs": jobs })))
 }
+
+#[derive(Deserialize)]
+pub struct WaitParams {
+    /// Timeout in seconds (default: 300)
+    #[serde(default = "default_wait_timeout")]
+    pub timeout: u64,
+}
+
+fn default_wait_timeout() -> u64 {
+    300
+}
+
+/// GET /api/jobs/:id/wait?timeout=300 — block until job completes
+pub async fn wait_job(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    axum::extract::Query(params): axum::extract::Query<WaitParams>,
+) -> impl IntoResponse {
+    let timeout = std::time::Duration::from_secs(params.timeout);
+    match state.store.wait_for_completion(&id, timeout).await {
+        Some(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "job not found" })),
+        ),
+    }
+}
