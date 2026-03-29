@@ -546,17 +546,91 @@ pub fn apply(
                 .map_err(|e| TeckelError::Execution(format!("polars replace collect: {e}")))
         }
         Source::Merge(_) => Err(TeckelError::Execution(
-            "merge not yet implemented for polars backend".to_string(),
+            "MERGE transformation requires a mutable table provider. Use the Spark backend for full MERGE INTO support, or decompose into join + filter + union.".to_string(),
         )),
         Source::Parse(_) => Err(TeckelError::Execution(
-            "parse not yet implemented for polars backend".to_string(),
+            "Parse transformation is not yet supported in the Polars backend. Use the Spark backend or decompose with SQL expressions.".to_string(),
         )),
-        Source::AsOfJoin(_) => Err(TeckelError::Execution(
-            "as-of join not yet implemented for polars backend".to_string(),
-        )),
-        Source::LateralJoin(_) => Err(TeckelError::Execution(
-            "lateral join not yet implemented for polars backend".to_string(),
-        )),
+        Source::AsOfJoin(t) => {
+            // Emulate as-of join via SQL window approach (ROW_NUMBER + join + direction filter).
+            // Native Polars as-of join requires the `asof_join` feature.
+            let left_df = get(cache, &t.left)?;
+            let right_df = get(cache, &t.right)?;
+            let mut ctx = polars::sql::SQLContext::new();
+            ctx.register("__left", left_df.lazy());
+            ctx.register("__right", right_df.lazy());
+
+            let on_clause = if t.on.is_empty() {
+                "1=1".to_string()
+            } else {
+                t.on.join(" AND ")
+            };
+            let direction_filter = match t.direction {
+                teckel_model::types::AsOfDirection::Backward => {
+                    format!("__right.\"{}\" <= __left.\"{}\"", t.right_as_of, t.left_as_of)
+                }
+                teckel_model::types::AsOfDirection::Forward => {
+                    format!("__right.\"{}\" >= __left.\"{}\"", t.right_as_of, t.left_as_of)
+                }
+                teckel_model::types::AsOfDirection::Nearest => "1=1".to_string(),
+            };
+            let order_expr = match t.direction {
+                teckel_model::types::AsOfDirection::Backward => {
+                    format!("__right.\"{}\" DESC", t.right_as_of)
+                }
+                teckel_model::types::AsOfDirection::Forward => {
+                    format!("__right.\"{}\" ASC", t.right_as_of)
+                }
+                teckel_model::types::AsOfDirection::Nearest => {
+                    format!(
+                        "ABS(__right.\"{}\" - __left.\"{}\") ASC",
+                        t.right_as_of, t.left_as_of
+                    )
+                }
+            };
+
+            let sql = format!(
+                "SELECT * FROM (\
+                    SELECT __left.*, __right.*, \
+                    ROW_NUMBER() OVER (PARTITION BY __left.\"{}\" ORDER BY {}) AS __teckel_rn \
+                    FROM __left \
+                    JOIN __right ON {} AND {}\
+                ) WHERE __teckel_rn = 1",
+                t.left_as_of, order_expr, on_clause, direction_filter
+            );
+            ctx.execute(&sql)
+                .map_err(|e| TeckelError::Execution(format!("polars as-of join: {e}")))?
+                .collect()
+                .map_err(|e| TeckelError::Execution(format!("polars as-of join collect: {e}")))
+        }
+        Source::LateralJoin(t) => {
+            // Emulate lateral join as a regular join via Polars SQL context.
+            // For true correlated subqueries, use the Spark backend.
+            let left_df = get(cache, &t.left)?;
+            let right_df = get(cache, &t.right)?;
+            let mut ctx = polars::sql::SQLContext::new();
+            ctx.register("__left", left_df.lazy());
+            ctx.register("__right", right_df.lazy());
+            let join_type_sql = match t.join_type {
+                teckel_model::types::JoinType::Inner => "INNER JOIN",
+                teckel_model::types::JoinType::Left => "LEFT JOIN",
+                teckel_model::types::JoinType::Cross => "CROSS JOIN",
+                teckel_model::types::JoinType::Right => "RIGHT JOIN",
+                teckel_model::types::JoinType::Outer => "FULL OUTER JOIN",
+                teckel_model::types::JoinType::LeftSemi => "LEFT SEMI JOIN",
+                teckel_model::types::JoinType::LeftAnti => "LEFT ANTI JOIN",
+            };
+            let on_clause = if t.on.is_empty() {
+                String::new()
+            } else {
+                format!(" ON {}", t.on.join(" AND "))
+            };
+            let query = format!("SELECT * FROM __left {join_type_sql} __right{on_clause}");
+            ctx.execute(&query)
+                .map_err(|e| TeckelError::Execution(format!("polars lateral join: {e}")))?
+                .collect()
+                .map_err(|e| TeckelError::Execution(format!("polars lateral join collect: {e}")))
+        }
         Source::Transpose(t) => {
             let df = get(cache, &t.from)?;
             let mut ctx = polars::sql::SQLContext::new();
