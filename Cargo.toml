@@ -21,8 +21,8 @@ authors = ["Rafael Fernandez <eff3ct0>"]
 
 [workspace.dependencies]
 # From teckel-rs (parser + model)
-teckel-model = { git = "https://github.com/eff3ct0/teckel-rs" }
-teckel-parser = { git = "https://github.com/eff3ct0/teckel-rs" }
+teckel-model = { path = "../teckel-rs/crates/teckel-model" }
+teckel-parser = { path = "../teckel-rs/crates/teckel-parser" }
 
 # DataFusion + Arrow
 datafusion = "44"
