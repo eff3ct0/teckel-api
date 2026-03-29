@@ -1034,10 +1034,9 @@ pub async fn apply(
                 .map_err(|e| TeckelError::Execution(format!("replace: {e}")))
         }
         Source::Merge(_) => {
-            // Merge (MERGE INTO) is a complex DML operation that requires mutable target state.
-            // DataFusion is primarily a read-only query engine; full MERGE support
-            // needs integration with a table provider that supports writes (e.g. Delta Lake).
-            todo!("merge transform requires a writable table provider (e.g. delta-rs)")
+            Err(TeckelError::Execution(
+                "MERGE transformation requires a mutable table provider. Use the Spark backend for full MERGE INTO support, or decompose into join + filter + union.".to_string()
+            ))
         }
         Source::Parse(t) => {
             let df = get(cache, &t.from)?;
@@ -1076,21 +1075,98 @@ pub async fn apply(
                     }
                 }
                 teckel_model::types::ParseFormat::Csv => {
-                    // CSV parsing from a string column is complex; use todo for now
-                    todo!("parse CSV from string column not yet implemented for DataFusion backend")
+                    Err(TeckelError::Execution(
+                        "Parse transformation for CSV format is not yet supported in DataFusion. Use the Spark backend or decompose with SQL expressions.".to_string()
+                    ))
                 }
             }
         }
-        Source::AsOfJoin(_) => {
-            // As-of join requires temporal matching logic (find nearest row by timestamp).
-            // DataFusion does not have native as-of join support; this would need a
-            // custom physical plan or window-based emulation.
-            todo!("as-of join requires temporal matching (window-based emulation planned)")
+        Source::AsOfJoin(t) => {
+            // Emulate as-of join via window-based approach: join with direction filter,
+            // then pick the closest match per left row using ROW_NUMBER.
+            let left_df = get(cache, &t.left)?;
+            let right_df = get(cache, &t.right)?;
+            let left_view = "__teckel_asof_left";
+            let right_view = "__teckel_asof_right";
+            ctx.register_table(left_view, left_df.into_view())
+                .map_err(|e| TeckelError::Execution(format!("as-of join register left: {e}")))?;
+            ctx.register_table(right_view, right_df.into_view())
+                .map_err(|e| TeckelError::Execution(format!("as-of join register right: {e}")))?;
+
+            let on_clause = if t.on.is_empty() {
+                "1=1".to_string()
+            } else {
+                t.on.join(" AND ")
+            };
+            let direction_filter = match t.direction {
+                teckel_model::types::AsOfDirection::Backward => {
+                    format!("{right_view}.\"{}\" <= {left_view}.\"{}\"", t.right_as_of, t.left_as_of)
+                }
+                teckel_model::types::AsOfDirection::Forward => {
+                    format!("{right_view}.\"{}\" >= {left_view}.\"{}\"", t.right_as_of, t.left_as_of)
+                }
+                teckel_model::types::AsOfDirection::Nearest => "1=1".to_string(),
+            };
+            let order_expr = match t.direction {
+                teckel_model::types::AsOfDirection::Backward => {
+                    format!("{right_view}.\"{}\" DESC", t.right_as_of)
+                }
+                teckel_model::types::AsOfDirection::Forward => {
+                    format!("{right_view}.\"{}\" ASC", t.right_as_of)
+                }
+                teckel_model::types::AsOfDirection::Nearest => {
+                    format!(
+                        "ABS(EXTRACT(EPOCH FROM ({right_view}.\"{}\" - {left_view}.\"{}\"))) ASC",
+                        t.right_as_of, t.left_as_of
+                    )
+                }
+            };
+
+            let sql = format!(
+                "SELECT * FROM (\
+                    SELECT {left_view}.*, {right_view}.*, \
+                    ROW_NUMBER() OVER (PARTITION BY {left_view}.\"{}\" ORDER BY {}) AS __teckel_rn \
+                    FROM {left_view} \
+                    JOIN {right_view} ON {} AND {}\
+                ) WHERE __teckel_rn = 1",
+                t.left_as_of, order_expr, on_clause, direction_filter
+            );
+            ctx.sql(&sql)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("as-of join: {e}")))
         }
-        Source::LateralJoin(_) => {
-            // Lateral join (CROSS APPLY / LATERAL) requires correlated subquery support.
-            // DataFusion has limited lateral join support.
-            todo!("lateral join requires correlated subquery support")
+        Source::LateralJoin(t) => {
+            // Emulate lateral join as a regular join (DataFusion lacks full LATERAL support).
+            // For true correlated subqueries, use the Spark backend.
+            let left_df = get(cache, &t.left)?;
+            let right_df = get(cache, &t.right)?;
+            let left_view = "__teckel_lateral_left";
+            let right_view = "__teckel_lateral_right";
+            ctx.register_table(left_view, left_df.into_view())
+                .map_err(|e| TeckelError::Execution(format!("lateral join register left: {e}")))?;
+            ctx.register_table(right_view, right_df.into_view())
+                .map_err(|e| TeckelError::Execution(format!("lateral join register right: {e}")))?;
+
+            let join_type_sql = match t.join_type {
+                teckel_model::types::JoinType::Inner => "JOIN",
+                teckel_model::types::JoinType::Left => "LEFT JOIN",
+                teckel_model::types::JoinType::Cross => "CROSS JOIN",
+                teckel_model::types::JoinType::Right => "RIGHT JOIN",
+                teckel_model::types::JoinType::Outer => "FULL OUTER JOIN",
+                teckel_model::types::JoinType::LeftSemi => "LEFT SEMI JOIN",
+                teckel_model::types::JoinType::LeftAnti => "LEFT ANTI JOIN",
+            };
+            let on_clause = if t.on.is_empty() {
+                String::new()
+            } else {
+                format!(" ON {}", t.on.join(" AND "))
+            };
+            let sql = format!(
+                "SELECT * FROM {left_view} {join_type_sql} {right_view}{on_clause}"
+            );
+            ctx.sql(&sql)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("lateral join: {e}")))
         }
         Source::Transpose(t) => {
             // Transpose: convert columns to rows and vice versa.
