@@ -36,6 +36,9 @@ service TeckelService {
   // List all jobs.
   rpc ListJobs(ListJobsRequest) returns (ListJobsResponse);
 
+  // Inspect an input source: infer schema (field names + types) and row count.
+  rpc InspectSource(InspectSourceRequest) returns (InspectSourceResponse);
+
   // ── Low-level Spark Connect-style API ────────────────────
 
   // Create a new execution session on the worker.
@@ -119,6 +122,25 @@ message ListJobsRequest {}
 
 message ListJobsResponse {
   repeated JobResponse jobs = 1;
+}
+
+// ── InspectSource ───────────────────────────────────────────
+
+message InspectSourceRequest {
+  string format = 1;
+  string path = 2;
+  map<string, string> options = 3;
+}
+
+message InspectSourceResponse {
+  repeated FieldInfo fields = 1;
+  int64 row_count = 2;
+}
+
+message FieldInfo {
+  string name = 1;
+  string data_type = 2;
+  bool nullable = 3;
 }
 
 // ═══════════════════════════════════════════════════════════
