@@ -106,6 +106,21 @@ fn source_op_name(source: &Source) -> &'static str {
         Source::Repartition(_) => "REPARTITION",
         Source::Coalesce(_) => "COALESCE",
         Source::Custom(_) => "CUSTOM",
+        // v3 transformations
+        Source::Offset(_) => "OFFSET",
+        Source::Tail(_) => "TAIL",
+        Source::FillNa(_) => "FILL NA",
+        Source::DropNa(_) => "DROP NA",
+        Source::Replace(_) => "REPLACE",
+        Source::Merge(_) => "MERGE",
+        Source::Parse(_) => "PARSE",
+        Source::AsOfJoin(_) => "AS-OF JOIN",
+        Source::LateralJoin(_) => "LATERAL JOIN",
+        Source::Transpose(_) => "TRANSPOSE",
+        Source::GroupingSets(_) => "GROUPING SETS",
+        Source::Describe(_) => "DESCRIBE",
+        Source::Crosstab(_) => "CROSSTAB",
+        Source::Hint(_) => "HINT",
     }
 }
 

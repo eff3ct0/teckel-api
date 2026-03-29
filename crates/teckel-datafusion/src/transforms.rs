@@ -858,10 +858,458 @@ pub async fn apply(
                 ))
             }
         }
+        // ── v3 transformations ────────────────────────────────────
+        Source::Offset(t) => {
+            let df = get(cache, &t.from)?;
+            df.limit(t.count as usize, None)
+                .map_err(|e| TeckelError::Execution(format!("offset: {e}")))
+        }
+        Source::Tail(t) => {
+            // Collect all rows, then take the last N.
+            // DataFusion does not have a native "tail" — we use OFFSET (total - N).
+            let df = get(cache, &t.from)?;
+            let view = "__teckel_tail_src";
+            ctx.register_table(view, df.into_view())
+                .map_err(|e| TeckelError::Execution(format!("tail register: {e}")))?;
+            let count_df = ctx
+                .sql(&format!("SELECT COUNT(*) AS cnt FROM {view}"))
+                .await
+                .map_err(|e| TeckelError::Execution(format!("tail count: {e}")))?;
+            let batches = count_df
+                .collect()
+                .await
+                .map_err(|e| TeckelError::Execution(format!("tail collect: {e}")))?;
+            let total: i64 = batches
+                .first()
+                .map(|b| {
+                    arrow_array::cast::as_primitive_array::<arrow_types::Int64Type>(b.column(0))
+                        .value(0)
+                })
+                .unwrap_or(0);
+            let skip = (total - t.count as i64).max(0) as usize;
+            ctx.sql(&format!("SELECT * FROM {view} OFFSET {skip}"))
+                .await
+                .map_err(|e| TeckelError::Execution(format!("tail: {e}")))
+        }
+        Source::FillNa(t) => {
+            let df = get(cache, &t.from)?;
+            let view = "__teckel_fillna_src";
+            ctx.register_table(view, df.clone().into_view())
+                .map_err(|e| TeckelError::Execution(format!("fillNa register: {e}")))?;
+
+            let schema_fields: Vec<String> = df
+                .schema()
+                .fields()
+                .iter()
+                .map(|f| f.name().clone())
+                .collect();
+
+            // Determine target columns: if t.columns is set, only those; otherwise all
+            let target_cols: Vec<&str> = match &t.columns {
+                Some(cols) => cols.iter().map(|s| s.as_str()).collect(),
+                None => schema_fields.iter().map(|s| s.as_str()).collect(),
+            };
+
+            // Build per-column fill value from `values` map, falling back to `value`
+            let projections: Vec<String> = schema_fields
+                .iter()
+                .map(|col_name| {
+                    if !target_cols.contains(&col_name.as_str()) {
+                        return format!("\"{col_name}\"");
+                    }
+                    // Check per-column values map first
+                    if let Some(ref values_map) = t.values {
+                        if let Some(prim) = values_map.get(col_name.as_str()) {
+                            let fill = primitive_to_sql(prim);
+                            return format!("COALESCE(\"{col_name}\", {fill}) AS \"{col_name}\"");
+                        }
+                    }
+                    // Fall back to scalar value
+                    if let Some(ref prim) = t.value {
+                        let fill = primitive_to_sql(prim);
+                        return format!("COALESCE(\"{col_name}\", {fill}) AS \"{col_name}\"");
+                    }
+                    format!("\"{col_name}\"")
+                })
+                .collect();
+
+            let query = format!("SELECT {} FROM {view}", projections.join(", "));
+            ctx.sql(&query)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("fillNa: {e}")))
+        }
+        Source::DropNa(t) => {
+            let df = get(cache, &t.from)?;
+            let view = "__teckel_dropna_src";
+            ctx.register_table(view, df.clone().into_view())
+                .map_err(|e| TeckelError::Execution(format!("dropNa register: {e}")))?;
+
+            let target_cols: Vec<&str> = match &t.columns {
+                Some(cols) => cols.iter().map(|s| s.as_str()).collect(),
+                None => df.schema().fields().iter().map(|f| f.name().as_str()).collect(),
+            };
+
+            if let Some(thresh) = t.min_non_nulls {
+                // Keep rows with at least `thresh` non-null values among target columns
+                let non_null_expr: Vec<String> = target_cols
+                    .iter()
+                    .map(|c| format!("CASE WHEN \"{c}\" IS NOT NULL THEN 1 ELSE 0 END"))
+                    .collect();
+                let query = format!(
+                    "SELECT * FROM {view} WHERE ({}) >= {thresh}",
+                    non_null_expr.join(" + ")
+                );
+                ctx.sql(&query)
+                    .await
+                    .map_err(|e| TeckelError::Execution(format!("dropNa thresh: {e}")))
+            } else {
+                // "any" = drop if any null, "all" = drop if all null
+                let condition = match t.how {
+                    teckel_model::types::DropNaHow::Any => {
+                        // Keep rows where ALL target columns are NOT NULL
+                        target_cols
+                            .iter()
+                            .map(|c| format!("\"{c}\" IS NOT NULL"))
+                            .collect::<Vec<_>>()
+                            .join(" AND ")
+                    }
+                    teckel_model::types::DropNaHow::All => {
+                        // Keep rows where at least one target column is NOT NULL
+                        target_cols
+                            .iter()
+                            .map(|c| format!("\"{c}\" IS NOT NULL"))
+                            .collect::<Vec<_>>()
+                            .join(" OR ")
+                    }
+                };
+                let query = format!("SELECT * FROM {view} WHERE {condition}");
+                ctx.sql(&query)
+                    .await
+                    .map_err(|e| TeckelError::Execution(format!("dropNa: {e}")))
+            }
+        }
+        Source::Replace(t) => {
+            let df = get(cache, &t.from)?;
+            let view = "__teckel_replace_src";
+            ctx.register_table(view, df.clone().into_view())
+                .map_err(|e| TeckelError::Execution(format!("replace register: {e}")))?;
+
+            let schema_fields: Vec<String> = df
+                .schema()
+                .fields()
+                .iter()
+                .map(|f| f.name().clone())
+                .collect();
+
+            let target_cols: Vec<&str> = if t.columns.is_none() {
+                schema_fields.iter().map(|s| s.as_str()).collect()
+            } else {
+                t.columns.as_ref().unwrap().iter().map(|s| s.as_str()).collect()
+            };
+
+            let projections: Vec<String> = schema_fields
+                .iter()
+                .map(|col_name| {
+                    if target_cols.contains(&col_name.as_str()) && !t.mappings.is_empty() {
+                        // Build nested CASE for replacements
+                        let mut case_sql = format!("CASE");
+                        for replacement in &t.mappings {
+                            let old_val = primitive_to_sql(&replacement.old);
+                            let new_val = primitive_to_sql(&replacement.new);
+                            case_sql.push_str(&format!(
+                                " WHEN CAST(\"{col_name}\" AS VARCHAR) = {old_val} THEN {new_val}"
+                            ));
+                        }
+                        case_sql.push_str(&format!(" ELSE \"{col_name}\" END AS \"{col_name}\""));
+                        case_sql
+                    } else {
+                        format!("\"{col_name}\"")
+                    }
+                })
+                .collect();
+
+            let query = format!("SELECT {} FROM {view}", projections.join(", "));
+            ctx.sql(&query)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("replace: {e}")))
+        }
+        Source::Merge(_) => {
+            // Merge (MERGE INTO) is a complex DML operation that requires mutable target state.
+            // DataFusion is primarily a read-only query engine; full MERGE support
+            // needs integration with a table provider that supports writes (e.g. Delta Lake).
+            todo!("merge transform requires a writable table provider (e.g. delta-rs)")
+        }
+        Source::Parse(t) => {
+            let df = get(cache, &t.from)?;
+            let view = "__teckel_parse_src";
+            ctx.register_table(view, df.into_view())
+                .map_err(|e| TeckelError::Execution(format!("parse register: {e}")))?;
+
+            match t.format {
+                teckel_model::types::ParseFormat::Json => {
+                    // Extract JSON fields using arrow_cast + json functions
+                    if let Some(ref schema_cols) = t.schema {
+                        let extracts: Vec<String> = schema_cols
+                            .iter()
+                            .map(|sc| {
+                                format!(
+                                    "CAST(json_extract_scalar(\"{col}\", '$.{name}') AS {dtype}) AS \"{name}\"",
+                                    col = t.column,
+                                    name = sc.name,
+                                    dtype = sc.data_type,
+                                )
+                            })
+                            .collect();
+                        // Project all original columns plus parsed fields
+                        let query = format!(
+                            "SELECT *, {} FROM {view}",
+                            extracts.join(", ")
+                        );
+                        ctx.sql(&query)
+                            .await
+                            .map_err(|e| TeckelError::Execution(format!("parse json: {e}")))
+                    } else {
+                        // No schema provided — pass through
+                        ctx.table(view)
+                            .await
+                            .map_err(|e| TeckelError::Execution(format!("parse json passthrough: {e}")))
+                    }
+                }
+                teckel_model::types::ParseFormat::Csv => {
+                    // CSV parsing from a string column is complex; use todo for now
+                    todo!("parse CSV from string column not yet implemented for DataFusion backend")
+                }
+            }
+        }
+        Source::AsOfJoin(_) => {
+            // As-of join requires temporal matching logic (find nearest row by timestamp).
+            // DataFusion does not have native as-of join support; this would need a
+            // custom physical plan or window-based emulation.
+            todo!("as-of join requires temporal matching (window-based emulation planned)")
+        }
+        Source::LateralJoin(_) => {
+            // Lateral join (CROSS APPLY / LATERAL) requires correlated subquery support.
+            // DataFusion has limited lateral join support.
+            todo!("lateral join requires correlated subquery support")
+        }
+        Source::Transpose(t) => {
+            // Transpose: convert columns to rows and vice versa.
+            // Implemented via UNION ALL of each non-index column.
+            let df = get(cache, &t.from)?;
+            let view = "__teckel_transpose_src";
+            ctx.register_table(view, df.clone().into_view())
+                .map_err(|e| TeckelError::Execution(format!("transpose register: {e}")))?;
+
+            let schema_fields: Vec<String> = df
+                .schema()
+                .fields()
+                .iter()
+                .map(|f| f.name().clone())
+                .collect();
+
+            let index_cols: &[String] = &t.index_columns;
+            let value_cols: Vec<&String> = schema_fields
+                .iter()
+                .filter(|f| !index_cols.contains(f))
+                .collect();
+
+            if value_cols.is_empty() {
+                return ctx
+                    .table(view)
+                    .await
+                    .map_err(|e| TeckelError::Execution(format!("transpose empty: {e}")));
+            }
+
+            let index_select = if index_cols.is_empty() {
+                String::new()
+            } else {
+                let cols = index_cols
+                    .iter()
+                    .map(|c| format!("\"{c}\""))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{cols}, ")
+            };
+
+            let unions: Vec<String> = value_cols
+                .iter()
+                .map(|col_name| {
+                    format!(
+                        "SELECT {index_select}'{col_name}' AS \"column_name\", CAST(\"{col_name}\" AS VARCHAR) AS \"value\" FROM {view}"
+                    )
+                })
+                .collect();
+
+            let query = unions.join(" UNION ALL ");
+            ctx.sql(&query)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("transpose: {e}")))
+        }
+        Source::GroupingSets(t) => {
+            let df = get(cache, &t.from)?;
+            let view = "__teckel_gssets_src";
+            ctx.register_table(view, df.into_view())
+                .map_err(|e| TeckelError::Execution(format!("groupingSets register: {e}")))?;
+            let sets_sql: Vec<String> = t
+                .sets
+                .iter()
+                .map(|set| {
+                    let cols = set.join(", ");
+                    format!("({cols})")
+                })
+                .collect();
+            let agg_exprs = t.agg.join(", ");
+            // Collect all columns mentioned in any set for the SELECT clause
+            let all_group_cols: Vec<String> = t
+                .sets
+                .iter()
+                .flat_map(|set| set.iter().cloned())
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect();
+            let select_cols = all_group_cols.join(", ");
+            let query = format!(
+                "SELECT {select_cols}, {agg_exprs} FROM {view} GROUP BY GROUPING SETS({})",
+                sets_sql.join(", ")
+            );
+            ctx.sql(&query)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("groupingSets: {e}")))
+        }
+        Source::Describe(t) => {
+            // Produce summary statistics: count, mean, stddev, min, max for numeric columns.
+            let df = get(cache, &t.from)?;
+            let view = "__teckel_describe_src";
+            ctx.register_table(view, df.clone().into_view())
+                .map_err(|e| TeckelError::Execution(format!("describe register: {e}")))?;
+
+            let target_cols: Vec<String> = match &t.columns {
+                Some(cols) => cols.clone(),
+                None => df
+                    .schema()
+                    .fields()
+                    .iter()
+                    .map(|f| f.name().clone())
+                    .collect(),
+            };
+
+            let default_stats = vec!["count", "mean", "stddev", "min", "max"];
+            let stats: Vec<&str> = match &t.statistics {
+                Some(s) => s.iter().map(|x| x.as_str()).collect(),
+                None => default_stats,
+            };
+
+            let mut stat_queries = Vec::new();
+            for stat in &stats {
+                let projections: Vec<String> = target_cols
+                    .iter()
+                    .map(|c| {
+                        let expr = match *stat {
+                            "count" => format!("CAST(COUNT(\"{c}\") AS VARCHAR)"),
+                            "mean" | "avg" => format!("CAST(AVG(CAST(\"{c}\" AS DOUBLE)) AS VARCHAR)"),
+                            "stddev" | "std" => {
+                                format!("CAST(STDDEV(CAST(\"{c}\" AS DOUBLE)) AS VARCHAR)")
+                            }
+                            "min" => format!("CAST(MIN(\"{c}\") AS VARCHAR)"),
+                            "max" => format!("CAST(MAX(\"{c}\") AS VARCHAR)"),
+                            other => format!("'{other}: unsupported'"),
+                        };
+                        format!("{expr} AS \"{c}\"")
+                    })
+                    .collect();
+                stat_queries.push(format!(
+                    "SELECT '{stat}' AS \"statistic\", {} FROM {view}",
+                    projections.join(", ")
+                ));
+            }
+
+            let query = stat_queries.join(" UNION ALL ");
+            ctx.sql(&query)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("describe: {e}")))
+        }
+        Source::Crosstab(t) => {
+            // Crosstab: frequency table of two columns.
+            let df = get(cache, &t.from)?;
+            let view = "__teckel_crosstab_src";
+            ctx.register_table(view, df.clone().into_view())
+                .map_err(|e| TeckelError::Execution(format!("crosstab register: {e}")))?;
+
+            // Get distinct values of col2 to use as column headers
+            let distinct_query = format!(
+                "SELECT DISTINCT \"{}\" FROM {view} ORDER BY \"{}\"",
+                t.col2, t.col2
+            );
+            let distinct_df = ctx
+                .sql(&distinct_query)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("crosstab distinct: {e}")))?;
+            let batches = distinct_df
+                .collect()
+                .await
+                .map_err(|e| TeckelError::Execution(format!("crosstab collect: {e}")))?;
+            let mut col2_values = Vec::new();
+            for batch in &batches {
+                let arr = batch.column(0);
+                let str_arr = arrow_array::cast::as_string_array(arr);
+                for i in 0..str_arr.len() {
+                    if !str_arr.is_null(i) {
+                        col2_values.push(str_arr.value(i).to_string());
+                    }
+                }
+            }
+
+            // Build conditional aggregation: COUNT(*) FILTER (WHERE col2 = 'val') for each value
+            let pivot_exprs: Vec<String> = col2_values
+                .iter()
+                .map(|val| {
+                    format!(
+                        "COUNT(*) FILTER (WHERE \"{}\" = '{val}') AS \"{val}\"",
+                        t.col2
+                    )
+                })
+                .collect();
+
+            let query = format!(
+                "SELECT \"{}\", {} FROM {view} GROUP BY \"{}\"",
+                t.col1,
+                pivot_exprs.join(", "),
+                t.col1
+            );
+            ctx.sql(&query)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("crosstab: {e}")))
+        }
+        Source::Hint(t) => {
+            // Hints are optimizer directives — in DataFusion they are not directly
+            // applicable. Log and pass through.
+            let df = get(cache, &t.from)?;
+            for hint in &t.hints {
+                tracing::info!(
+                    hint = hint.name.as_str(),
+                    params = ?hint.parameters,
+                    "ignoring optimizer hint (not supported in DataFusion backend)"
+                );
+            }
+            Ok(df)
+        }
         // I/O handled by the executor, not here
         Source::Input(_) | Source::Output(_) => Err(TeckelError::Execution(
             "Input/Output should be handled by the executor, not apply()".to_string(),
         )),
+    }
+}
+
+/// Convert a Primitive value to a SQL literal string.
+fn primitive_to_sql(p: &teckel_model::types::Primitive) -> String {
+    match p {
+        teckel_model::types::Primitive::Bool(b) => b.to_string(),
+        teckel_model::types::Primitive::Int(i) => i.to_string(),
+        teckel_model::types::Primitive::Float(f) => f.to_string(),
+        teckel_model::types::Primitive::String(s) => {
+            let escaped = s.replace('\'', "''");
+            format!("'{escaped}'")
+        }
     }
 }
 

@@ -316,10 +316,540 @@ pub async fn apply(
             Ok(df.repartition(t.num_partitions, None))
         }
 
+        // ── v3 transformations (via Spark SQL) ────────────────────
+        Source::Offset(t) => {
+            let df = get(cache, &t.from)?;
+            let view = "__teckel_offset_src";
+            df.create_or_replace_temp_view(view)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("offset register: {e}")))?;
+            let query = format!("SELECT * FROM {view} OFFSET {}", t.count);
+            session
+                .sql(&query)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("offset: {e}")))
+        }
+        Source::Tail(t) => {
+            let df = get(cache, &t.from)?;
+            let view = "__teckel_tail_src";
+            df.create_or_replace_temp_view(view)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("tail register: {e}")))?;
+            // Spark SQL: get total count, then OFFSET (total - N)
+            let count_df = session
+                .sql(&format!("SELECT COUNT(*) AS cnt FROM {view}"))
+                .await
+                .map_err(|e| TeckelError::Execution(format!("tail count: {e}")))?;
+            let count_view = "__teckel_tail_cnt";
+            count_df
+                .create_or_replace_temp_view(count_view)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("tail count register: {e}")))?;
+            // Use a subquery to compute the offset dynamically
+            let query = format!(
+                "SELECT * FROM {view} LIMIT {} OFFSET (SELECT GREATEST(cnt - {}, 0) FROM {count_view})",
+                t.count, t.count
+            );
+            session
+                .sql(&query)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("tail: {e}")))
+        }
+        Source::FillNa(t) => {
+            let df = get(cache, &t.from)?;
+            let view = "__teckel_fillna_src";
+            df.create_or_replace_temp_view(view)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("fillNa register: {e}")))?;
+
+            let schema = session
+                .sql(&format!("SELECT * FROM {view} LIMIT 0"))
+                .await
+                .map_err(|e| TeckelError::Execution(format!("fillNa schema: {e}")))?
+                .columns()
+                .await
+                .map_err(|e| TeckelError::Execution(format!("fillNa columns: {e}")))?;
+
+            // Determine target columns
+            let target_cols: Vec<&str> = match &t.columns {
+                Some(cols) => cols.iter().map(|s| s.as_str()).collect(),
+                None => schema.iter().map(|s| s.as_str()).collect(),
+            };
+
+            let projections: Vec<String> = schema
+                .iter()
+                .map(|col_name| {
+                    if !target_cols.contains(&col_name.as_str()) {
+                        return format!("`{col_name}`");
+                    }
+                    // Check per-column values map first
+                    if let Some(ref values_map) = t.values {
+                        if let Some(prim) = values_map.get(col_name.as_str()) {
+                            let fill = spark_primitive_to_sql(prim);
+                            return format!("COALESCE(`{col_name}`, {fill}) AS `{col_name}`");
+                        }
+                    }
+                    // Fall back to scalar value
+                    if let Some(ref prim) = t.value {
+                        let fill = spark_primitive_to_sql(prim);
+                        return format!("COALESCE(`{col_name}`, {fill}) AS `{col_name}`");
+                    }
+                    format!("`{col_name}`")
+                })
+                .collect();
+
+            let query = format!("SELECT {} FROM {view}", projections.join(", "));
+            session
+                .sql(&query)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("fillNa: {e}")))
+        }
+        Source::DropNa(t) => {
+            let df = get(cache, &t.from)?;
+            let view = "__teckel_dropna_src";
+            df.create_or_replace_temp_view(view)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("dropNa register: {e}")))?;
+
+            let schema = session
+                .sql(&format!("SELECT * FROM {view} LIMIT 0"))
+                .await
+                .map_err(|e| TeckelError::Execution(format!("dropNa schema: {e}")))?
+                .columns()
+                .await
+                .map_err(|e| TeckelError::Execution(format!("dropNa columns: {e}")))?;
+
+            let target_cols: Vec<String> = match &t.columns {
+                Some(cols) => cols.clone(),
+                None => schema,
+            };
+
+            if let Some(thresh) = t.min_non_nulls {
+                let non_null_expr: Vec<String> = target_cols
+                    .iter()
+                    .map(|c| format!("CASE WHEN `{c}` IS NOT NULL THEN 1 ELSE 0 END"))
+                    .collect();
+                let query = format!(
+                    "SELECT * FROM {view} WHERE ({}) >= {thresh}",
+                    non_null_expr.join(" + ")
+                );
+                session
+                    .sql(&query)
+                    .await
+                    .map_err(|e| TeckelError::Execution(format!("dropNa thresh: {e}")))
+            } else {
+                let condition = match t.how {
+                    teckel_model::types::DropNaHow::Any => {
+                        target_cols
+                            .iter()
+                            .map(|c| format!("`{c}` IS NOT NULL"))
+                            .collect::<Vec<_>>()
+                            .join(" AND ")
+                    }
+                    teckel_model::types::DropNaHow::All => {
+                        target_cols
+                            .iter()
+                            .map(|c| format!("`{c}` IS NOT NULL"))
+                            .collect::<Vec<_>>()
+                            .join(" OR ")
+                    }
+                };
+                let query = format!("SELECT * FROM {view} WHERE {condition}");
+                session
+                    .sql(&query)
+                    .await
+                    .map_err(|e| TeckelError::Execution(format!("dropNa: {e}")))
+            }
+        }
+        Source::Replace(t) => {
+            let df = get(cache, &t.from)?;
+            let view = "__teckel_replace_src";
+            df.create_or_replace_temp_view(view)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("replace register: {e}")))?;
+
+            let schema = session
+                .sql(&format!("SELECT * FROM {view} LIMIT 0"))
+                .await
+                .map_err(|e| TeckelError::Execution(format!("replace schema: {e}")))?
+                .columns()
+                .await
+                .map_err(|e| TeckelError::Execution(format!("replace columns: {e}")))?;
+
+            let target_cols: Vec<String> = match &t.columns {
+                Some(cols) => cols.clone(),
+                None => schema.clone(),
+            };
+
+            let projections: Vec<String> = schema
+                .iter()
+                .map(|col_name| {
+                    if target_cols.iter().any(|c| c == col_name) && !t.mappings.is_empty() {
+                        let mut case_sql = String::from("CASE");
+                        for replacement in &t.mappings {
+                            let old_val = spark_primitive_to_sql(&replacement.old);
+                            let new_val = spark_primitive_to_sql(&replacement.new);
+                            case_sql.push_str(&format!(
+                                " WHEN CAST(`{col_name}` AS STRING) = {old_val} THEN {new_val}"
+                            ));
+                        }
+                        case_sql.push_str(&format!(" ELSE `{col_name}` END AS `{col_name}`"));
+                        case_sql
+                    } else {
+                        format!("`{col_name}`")
+                    }
+                })
+                .collect();
+
+            let query = format!("SELECT {} FROM {view}", projections.join(", "));
+            session
+                .sql(&query)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("replace: {e}")))
+        }
+        Source::Merge(t) => {
+            // Spark SQL supports MERGE INTO natively for Delta tables
+            let target_df = get(cache, &t.target)?;
+            let source_df = get(cache, &t.source)?;
+            target_df
+                .create_or_replace_temp_view("__teckel_merge_target")
+                .await
+                .map_err(|e| TeckelError::Execution(format!("merge target register: {e}")))?;
+            source_df
+                .create_or_replace_temp_view("__teckel_merge_source")
+                .await
+                .map_err(|e| TeckelError::Execution(format!("merge source register: {e}")))?;
+
+            let on_clause = t.on.join(" AND ");
+            let mut merge_sql = format!(
+                "MERGE INTO __teckel_merge_target t USING __teckel_merge_source s ON {on_clause}"
+            );
+
+            for action in &t.when_matched {
+                let cond = action
+                    .condition
+                    .as_ref()
+                    .map(|c| format!(" AND {c}"))
+                    .unwrap_or_default();
+                match action.action {
+                    teckel_model::types::MergeActionType::Update => {
+                        if action.star {
+                            merge_sql.push_str(&format!(" WHEN MATCHED{cond} THEN UPDATE SET *"));
+                        } else if let Some(ref set) = action.set {
+                            let assignments: Vec<String> =
+                                set.iter().map(|(k, v)| format!("t.`{k}` = {v}")).collect();
+                            merge_sql.push_str(&format!(
+                                " WHEN MATCHED{cond} THEN UPDATE SET {}",
+                                assignments.join(", ")
+                            ));
+                        }
+                    }
+                    teckel_model::types::MergeActionType::Delete => {
+                        merge_sql.push_str(&format!(" WHEN MATCHED{cond} THEN DELETE"));
+                    }
+                    teckel_model::types::MergeActionType::Insert => {}
+                }
+            }
+
+            for action in &t.when_not_matched {
+                let cond = action
+                    .condition
+                    .as_ref()
+                    .map(|c| format!(" AND {c}"))
+                    .unwrap_or_default();
+                if matches!(action.action, teckel_model::types::MergeActionType::Insert) {
+                    if action.star {
+                        merge_sql
+                            .push_str(&format!(" WHEN NOT MATCHED{cond} THEN INSERT *"));
+                    } else if let Some(ref set) = action.set {
+                        let cols: Vec<&str> = set.keys().map(|k| k.as_str()).collect();
+                        let vals: Vec<&str> = set.values().map(|v| v.as_str()).collect();
+                        merge_sql.push_str(&format!(
+                            " WHEN NOT MATCHED{cond} THEN INSERT ({}) VALUES ({})",
+                            cols.join(", "),
+                            vals.join(", ")
+                        ));
+                    }
+                }
+            }
+
+            session
+                .sql(&merge_sql)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("merge: {e}")))
+        }
+        Source::Parse(t) => {
+            let df = get(cache, &t.from)?;
+            let view = "__teckel_parse_src";
+            df.create_or_replace_temp_view(view)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("parse register: {e}")))?;
+
+            let func_name = match t.format {
+                teckel_model::types::ParseFormat::Json => "from_json",
+                teckel_model::types::ParseFormat::Csv => "from_csv",
+            };
+
+            if let Some(ref schema_cols) = t.schema {
+                let schema_str: Vec<String> = schema_cols
+                    .iter()
+                    .map(|sc| format!("{} {}", sc.name, sc.data_type))
+                    .collect();
+                let schema_ddl = schema_str.join(", ");
+                let query = format!(
+                    "SELECT *, {func_name}(`{}`, '{schema_ddl}') AS __parsed FROM {view}",
+                    t.column
+                );
+                session
+                    .sql(&query)
+                    .await
+                    .map_err(|e| TeckelError::Execution(format!("parse: {e}")))
+            } else {
+                // No schema — pass through
+                session
+                    .sql(&format!("SELECT * FROM {view}"))
+                    .await
+                    .map_err(|e| TeckelError::Execution(format!("parse passthrough: {e}")))
+            }
+        }
+        Source::AsOfJoin(t) => {
+            // Spark does not have native AS OF JOIN in SQL;
+            // emulate via window function approach.
+            let left_df = get(cache, &t.left)?;
+            let right_df = get(cache, &t.right)?;
+            left_df
+                .create_or_replace_temp_view("__teckel_asof_left")
+                .await
+                .map_err(|e| TeckelError::Execution(format!("asof left register: {e}")))?;
+            right_df
+                .create_or_replace_temp_view("__teckel_asof_right")
+                .await
+                .map_err(|e| TeckelError::Execution(format!("asof right register: {e}")))?;
+
+            let on_clause = if t.on.is_empty() {
+                String::from("1=1")
+            } else {
+                t.on.join(" AND ")
+            };
+
+            let direction_filter = match t.direction {
+                teckel_model::types::AsOfDirection::Backward => {
+                    format!("r.`{}` <= l.`{}`", t.right_as_of, t.left_as_of)
+                }
+                teckel_model::types::AsOfDirection::Forward => {
+                    format!("r.`{}` >= l.`{}`", t.right_as_of, t.left_as_of)
+                }
+                teckel_model::types::AsOfDirection::Nearest => {
+                    String::from("1=1") // Handled by ordering below
+                }
+            };
+
+            let order_expr = match t.direction {
+                teckel_model::types::AsOfDirection::Backward => {
+                    format!("r.`{}` DESC", t.right_as_of)
+                }
+                teckel_model::types::AsOfDirection::Forward => {
+                    format!("r.`{}`", t.right_as_of)
+                }
+                teckel_model::types::AsOfDirection::Nearest => {
+                    format!("ABS(CAST(r.`{}` AS LONG) - CAST(l.`{}` AS LONG))", t.right_as_of, t.left_as_of)
+                }
+            };
+
+            let query = format!(
+                "SELECT * FROM ( \
+                    SELECT l.*, r.*, ROW_NUMBER() OVER (PARTITION BY l.`{}` ORDER BY {order_expr}) AS __rn \
+                    FROM __teckel_asof_left l \
+                    JOIN __teckel_asof_right r ON {on_clause} AND {direction_filter} \
+                ) WHERE __rn = 1",
+                t.left_as_of
+            );
+
+            session
+                .sql(&query)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("asOfJoin: {e}")))
+        }
+        Source::LateralJoin(t) => {
+            let left_df = get(cache, &t.left)?;
+            let right_df = get(cache, &t.right)?;
+            left_df
+                .create_or_replace_temp_view("__teckel_lateral_left")
+                .await
+                .map_err(|e| TeckelError::Execution(format!("lateral left register: {e}")))?;
+            right_df
+                .create_or_replace_temp_view("__teckel_lateral_right")
+                .await
+                .map_err(|e| TeckelError::Execution(format!("lateral right register: {e}")))?;
+
+            let join_type = match t.join_type {
+                teckel_model::types::JoinType::Inner => "JOIN",
+                teckel_model::types::JoinType::Left => "LEFT JOIN",
+                teckel_model::types::JoinType::Cross => "CROSS JOIN",
+                _ => "JOIN",
+            };
+            let on_clause = if t.on.is_empty() {
+                String::new()
+            } else {
+                format!(" ON {}", t.on.join(" AND "))
+            };
+            // The right dataset is registered as a view; use it in a lateral subquery
+            let query = format!(
+                "SELECT * FROM __teckel_lateral_left {join_type} LATERAL (SELECT * FROM __teckel_lateral_right){on_clause}"
+            );
+            session
+                .sql(&query)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("lateralJoin: {e}")))
+        }
+        Source::Transpose(t) => {
+            let df = get(cache, &t.from)?;
+            let view = "__teckel_transpose_src";
+            df.create_or_replace_temp_view(view)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("transpose register: {e}")))?;
+
+            let schema = session
+                .sql(&format!("SELECT * FROM {view} LIMIT 0"))
+                .await
+                .map_err(|e| TeckelError::Execution(format!("transpose schema: {e}")))?
+                .columns()
+                .await
+                .map_err(|e| TeckelError::Execution(format!("transpose columns: {e}")))?;
+
+            let index_cols = &t.index_columns;
+            let value_cols: Vec<&String> = schema.iter().filter(|c| !index_cols.contains(c)).collect();
+
+            if value_cols.is_empty() {
+                return session
+                    .sql(&format!("SELECT * FROM {view}"))
+                    .await
+                    .map_err(|e| TeckelError::Execution(format!("transpose empty: {e}")));
+            }
+
+            let index_select = if index_cols.is_empty() {
+                String::new()
+            } else {
+                let idx = index_cols.iter().map(|c| format!("`{c}`")).collect::<Vec<_>>().join(", ");
+                format!("{idx}, ")
+            };
+
+            let unions: Vec<String> = value_cols
+                .iter()
+                .map(|col_name| {
+                    format!(
+                        "SELECT {index_select}'{col_name}' AS `column_name`, CAST(`{col_name}` AS STRING) AS `value` FROM {view}"
+                    )
+                })
+                .collect();
+            let query = unions.join(" UNION ALL ");
+            session
+                .sql(&query)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("transpose: {e}")))
+        }
+        Source::GroupingSets(t) => {
+            let df = get(cache, &t.from)?;
+            let view = "__teckel_gssets_src";
+            df.create_or_replace_temp_view(view)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("groupingSets register: {e}")))?;
+            let sets_sql: Vec<String> = t
+                .sets
+                .iter()
+                .map(|set| format!("({})", set.join(", ")))
+                .collect();
+            let agg_exprs = t.agg.join(", ");
+            let all_group_cols: Vec<String> = t
+                .sets
+                .iter()
+                .flat_map(|set| set.iter().cloned())
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect();
+            let select_cols = all_group_cols.join(", ");
+            let query = format!(
+                "SELECT {select_cols}, {agg_exprs} FROM {view} GROUP BY GROUPING SETS({})",
+                sets_sql.join(", ")
+            );
+            session
+                .sql(&query)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("groupingSets: {e}")))
+        }
+        Source::Describe(t) => {
+            let df = get(cache, &t.from)?;
+            let view = "__teckel_describe_src";
+            df.create_or_replace_temp_view(view)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("describe register: {e}")))?;
+            // Spark has a built-in DESCRIBE TABLE, but for statistics we use SUMMARY
+            let query = format!("SELECT * FROM (DESCRIBE {view})");
+            session
+                .sql(&query)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("describe: {e}")))
+        }
+        Source::Crosstab(t) => {
+            let df = get(cache, &t.from)?;
+            let view = "__teckel_crosstab_src";
+            df.create_or_replace_temp_view(view)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("crosstab register: {e}")))?;
+            // Use Spark's crosstab function via SQL
+            let query = format!(
+                "SELECT * FROM (SELECT `{}`, `{}` FROM {view}) PIVOT (COUNT(*) FOR `{}` IN (SELECT DISTINCT `{}` FROM {view}))",
+                t.col1, t.col2, t.col2, t.col2
+            );
+            session
+                .sql(&query)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("crosstab: {e}")))
+        }
+        Source::Hint(t) => {
+            let df = get(cache, &t.from)?;
+            let view = "__teckel_hint_src";
+            df.create_or_replace_temp_view(view)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("hint register: {e}")))?;
+            // Spark SQL supports /*+ HINT */ syntax
+            let hints_sql: Vec<String> = t
+                .hints
+                .iter()
+                .map(|h| {
+                    if h.parameters.is_empty() {
+                        h.name.clone()
+                    } else {
+                        format!("{}({})", h.name, h.parameters.join(", "))
+                    }
+                })
+                .collect();
+            let query = format!(
+                "SELECT /*+ {} */ * FROM {view}",
+                hints_sql.join(", ")
+            );
+            session
+                .sql(&query)
+                .await
+                .map_err(|e| TeckelError::Execution(format!("hint: {e}")))
+        }
+
         // Fallback for transforms not yet mapped
         source => Err(TeckelError::Execution(format!(
             "transform {:?} is not yet supported by the Spark Connect backend",
             std::mem::discriminant(source)
         ))),
+    }
+}
+
+fn spark_primitive_to_sql(p: &teckel_model::types::Primitive) -> String {
+    match p {
+        teckel_model::types::Primitive::Bool(b) => b.to_string(),
+        teckel_model::types::Primitive::Int(i) => i.to_string(),
+        teckel_model::types::Primitive::Float(f) => f.to_string(),
+        teckel_model::types::Primitive::String(s) => {
+            let escaped = s.replace('\'', "''");
+            format!("'{escaped}'")
+        }
     }
 }
