@@ -295,6 +295,35 @@ impl TeckelService for TeckelWorker {
         Ok(Response::new(proto::ListJobsResponse { jobs }))
     }
 
+    // ── Inspect Source ───────────────────────────────────────
+
+    async fn inspect_source(
+        &self,
+        request: Request<proto::InspectSourceRequest>,
+    ) -> Result<Response<proto::InspectSourceResponse>, Status> {
+        let req = request.into_inner();
+        let options: BTreeMap<String, String> = req.options.into_iter().collect();
+
+        match teckel_api::inspect(&req.format, &req.path, &options).await {
+            Ok(result) => {
+                let fields = result
+                    .fields
+                    .into_iter()
+                    .map(|f| proto::FieldInfo {
+                        name: f.name,
+                        data_type: f.data_type,
+                        nullable: f.nullable,
+                    })
+                    .collect();
+                Ok(Response::new(proto::InspectSourceResponse {
+                    fields,
+                    row_count: result.row_count as i64,
+                }))
+            }
+            Err(e) => Err(Status::invalid_argument(format!("{e}"))),
+        }
+    }
+
     // ── Low-level: Sessions ──────────────────────────────────
 
     async fn create_session(

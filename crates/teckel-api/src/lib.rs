@@ -57,6 +57,72 @@ pub fn explain(yaml: &str, variables: &BTreeMap<String, String>) -> Result<Strin
     dry_run::explain(&pipeline.context)
 }
 
+/// Inspect an input source: infer schema and count rows.
+pub async fn inspect(
+    format: &str,
+    path: &str,
+    options: &BTreeMap<String, String>,
+) -> Result<InspectResult, TeckelError> {
+    use teckel_model::source::InputSource;
+    use teckel_model::types::Primitive;
+
+    let opts = options
+        .iter()
+        .map(|(k, v)| {
+            let prim = match v.as_str() {
+                "true" => Primitive::Bool(true),
+                "false" => Primitive::Bool(false),
+                s if !s.is_empty() && s.parse::<f64>().is_ok() && !s.contains('.') => {
+                    Primitive::Int(s.parse().unwrap())
+                }
+                s if !s.is_empty() && s.parse::<f64>().is_ok() => {
+                    Primitive::Float(s.parse().unwrap())
+                }
+                s => Primitive::String(s.to_string()),
+            };
+            (k.clone(), prim)
+        })
+        .collect();
+
+    let input = InputSource {
+        format: format.to_string(),
+        path: path.to_string(),
+        options: opts,
+    };
+
+    let backend = DataFusionBackend::new();
+    let df = backend.read_input(&input).await?;
+    let schema = df.schema().clone();
+    let row_count = df.count().await.map_err(|e| {
+        TeckelError::Execution(format!("failed to count rows: {e}"))
+    })?;
+
+    let fields = schema
+        .fields()
+        .iter()
+        .map(|f| InspectField {
+            name: f.name().clone(),
+            data_type: format!("{}", f.data_type()),
+            nullable: f.is_nullable(),
+        })
+        .collect();
+
+    Ok(InspectResult { fields, row_count })
+}
+
+/// Result of inspecting an input source.
+pub struct InspectResult {
+    pub fields: Vec<InspectField>,
+    pub row_count: usize,
+}
+
+/// A field in the schema of an inspected source.
+pub struct InspectField {
+    pub name: String,
+    pub data_type: String,
+    pub nullable: bool,
+}
+
 /// Parse and validate a Teckel YAML pipeline without executing.
 ///
 /// Returns `Ok(())` if the pipeline is valid, or a validation error.

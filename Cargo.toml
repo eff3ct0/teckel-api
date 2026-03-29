@@ -4,6 +4,7 @@ members = [
     "crates/teckel-engine",
     "crates/teckel-datafusion",
     "crates/teckel-polars",
+    "crates/teckel-spark",
     "crates/teckel-api",
     "crates/teckel-server",
     "crates/teckel-remote",
@@ -25,7 +26,7 @@ teckel-parser = { git = "https://github.com/eff3ct0/teckel-rs" }
 
 # DataFusion + Arrow
 datafusion = "44"
-arrow = { version = "54", features = ["prettyprint"] }
+arrow = { version = "55", features = ["prettyprint"] }
 
 # Graph
 petgraph = "0.6"
@@ -68,4 +69,5 @@ teckel-engine = { path = "crates/teckel-engine" }
 teckel-datafusion = { path = "crates/teckel-datafusion" }
 teckel-api = { path = "crates/teckel-api" }
 teckel-polars = { path = "crates/teckel-polars" }
+teckel-spark = { path = "crates/teckel-spark" }
 teckel-remote = { path = "crates/teckel-remote" }

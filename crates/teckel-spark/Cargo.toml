@@ -1,0 +1,17 @@
+[package]
+name = "teckel-spark"
+description = "Apache Spark Connect backend for Teckel v2.0 pipeline execution"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+teckel-model = { workspace = true }
+teckel-engine = { workspace = true }
+spark-connect-rs = { git = "https://github.com/rafafrdz/spark-connect-rust.git", branch = "dev" }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
