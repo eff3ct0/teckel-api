@@ -415,9 +415,314 @@ pub fn apply(
         Source::Split(_) => Err(TeckelError::Execution(
             "split should have been expanded by parser".to_string(),
         )),
+        // ── v3 transformations ────────────────────────────────────
+        Source::Offset(t) => {
+            let df = get(cache, &t.from)?;
+            Ok(df.slice(t.count as i64, df.height()))
+        }
+        Source::Tail(t) => {
+            let df = get(cache, &t.from)?;
+            Ok(df.tail(Some(t.count as usize)))
+        }
+        Source::FillNa(t) => {
+            let df = get(cache, &t.from)?;
+            let mut ctx = polars::sql::SQLContext::new();
+            ctx.register("__src", df.clone().lazy());
+            let all_cols: Vec<String> = df.get_column_names_str().iter().map(|s| s.to_string()).collect();
+
+            // Determine target columns: if t.columns is set, only those; otherwise all
+            let target_cols: Vec<&str> = match &t.columns {
+                Some(cols) => cols.iter().map(|s| s.as_str()).collect(),
+                None => all_cols.iter().map(|s| s.as_str()).collect(),
+            };
+
+            // Build per-column fill value from `values` map, falling back to `value`
+            let projections: Vec<String> = all_cols
+                .iter()
+                .map(|col_name| {
+                    if !target_cols.contains(&col_name.as_str()) {
+                        return format!("\"{col_name}\"");
+                    }
+                    // Check per-column values map first
+                    if let Some(ref values_map) = t.values {
+                        if let Some(prim) = values_map.get(col_name.as_str()) {
+                            let fill = polars_primitive_to_sql(prim);
+                            return format!("COALESCE(\"{col_name}\", {fill}) AS \"{col_name}\"");
+                        }
+                    }
+                    // Fall back to scalar value
+                    if let Some(ref prim) = t.value {
+                        let fill = polars_primitive_to_sql(prim);
+                        return format!("COALESCE(\"{col_name}\", {fill}) AS \"{col_name}\"");
+                    }
+                    format!("\"{col_name}\"")
+                })
+                .collect();
+
+            let query = format!("SELECT {} FROM __src", projections.join(", "));
+            ctx.execute(&query)
+                .map_err(|e| TeckelError::Execution(format!("polars fillNa: {e}")))?
+                .collect()
+                .map_err(|e| TeckelError::Execution(format!("polars fillNa collect: {e}")))
+        }
+        Source::DropNa(t) => {
+            let df = get(cache, &t.from)?;
+            let mut ctx = polars::sql::SQLContext::new();
+            ctx.register("__src", df.clone().lazy());
+            let target_cols: Vec<&str> = match &t.columns {
+                Some(cols) => cols.iter().map(|s| s.as_str()).collect(),
+                None => df.get_column_names_str().to_vec(),
+            };
+            if let Some(thresh) = t.min_non_nulls {
+                let non_null_expr: Vec<String> = target_cols
+                    .iter()
+                    .map(|c| format!("CASE WHEN \"{c}\" IS NOT NULL THEN 1 ELSE 0 END"))
+                    .collect();
+                let query = format!(
+                    "SELECT * FROM __src WHERE ({}) >= {thresh}",
+                    non_null_expr.join(" + ")
+                );
+                ctx.execute(&query)
+                    .map_err(|e| TeckelError::Execution(format!("polars dropNa thresh: {e}")))?
+                    .collect()
+                    .map_err(|e| TeckelError::Execution(format!("polars dropNa thresh collect: {e}")))
+            } else {
+                let condition = match t.how {
+                    teckel_model::types::DropNaHow::Any => {
+                        target_cols
+                            .iter()
+                            .map(|c| format!("\"{c}\" IS NOT NULL"))
+                            .collect::<Vec<_>>()
+                            .join(" AND ")
+                    }
+                    teckel_model::types::DropNaHow::All => {
+                        target_cols
+                            .iter()
+                            .map(|c| format!("\"{c}\" IS NOT NULL"))
+                            .collect::<Vec<_>>()
+                            .join(" OR ")
+                    }
+                };
+                let query = format!("SELECT * FROM __src WHERE {condition}");
+                ctx.execute(&query)
+                    .map_err(|e| TeckelError::Execution(format!("polars dropNa: {e}")))?
+                    .collect()
+                    .map_err(|e| TeckelError::Execution(format!("polars dropNa collect: {e}")))
+            }
+        }
+        Source::Replace(t) => {
+            let df = get(cache, &t.from)?;
+            let mut ctx = polars::sql::SQLContext::new();
+            ctx.register("__src", df.clone().lazy());
+            let cols: Vec<String> = df.get_column_names_str().iter().map(|s| s.to_string()).collect();
+            let target_cols: Vec<&str> = if t.columns.is_none() {
+                cols.iter().map(|s| s.as_str()).collect()
+            } else {
+                t.columns.as_ref().unwrap().iter().map(|s| s.as_str()).collect()
+            };
+            let projections: Vec<String> = cols
+                .iter()
+                .map(|col_name| {
+                    if target_cols.contains(&col_name.as_str()) && !t.mappings.is_empty() {
+                        let mut case_sql = String::from("CASE");
+                        for replacement in &t.mappings {
+                            let old_val = polars_primitive_to_sql(&replacement.old);
+                            let new_val = polars_primitive_to_sql(&replacement.new);
+                            case_sql.push_str(&format!(
+                                " WHEN CAST(\"{col_name}\" AS VARCHAR) = {old_val} THEN {new_val}"
+                            ));
+                        }
+                        case_sql.push_str(&format!(" ELSE \"{col_name}\" END AS \"{col_name}\""));
+                        case_sql
+                    } else {
+                        format!("\"{col_name}\"")
+                    }
+                })
+                .collect();
+            let query = format!("SELECT {} FROM __src", projections.join(", "));
+            ctx.execute(&query)
+                .map_err(|e| TeckelError::Execution(format!("polars replace: {e}")))?
+                .collect()
+                .map_err(|e| TeckelError::Execution(format!("polars replace collect: {e}")))
+        }
+        Source::Merge(_) => Err(TeckelError::Execution(
+            "merge not yet implemented for polars backend".to_string(),
+        )),
+        Source::Parse(_) => Err(TeckelError::Execution(
+            "parse not yet implemented for polars backend".to_string(),
+        )),
+        Source::AsOfJoin(_) => Err(TeckelError::Execution(
+            "as-of join not yet implemented for polars backend".to_string(),
+        )),
+        Source::LateralJoin(_) => Err(TeckelError::Execution(
+            "lateral join not yet implemented for polars backend".to_string(),
+        )),
+        Source::Transpose(t) => {
+            let df = get(cache, &t.from)?;
+            let mut ctx = polars::sql::SQLContext::new();
+            ctx.register("__src", df.clone().lazy());
+            let cols: Vec<String> = df.get_column_names_str().iter().map(|s| s.to_string()).collect();
+            let index_cols = &t.index_columns;
+            let value_cols: Vec<&String> = cols.iter().filter(|c| !index_cols.contains(c)).collect();
+            if value_cols.is_empty() {
+                return Ok(df);
+            }
+            let index_select = if index_cols.is_empty() {
+                String::new()
+            } else {
+                let idx = index_cols.iter().map(|c| format!("\"{c}\"")).collect::<Vec<_>>().join(", ");
+                format!("{idx}, ")
+            };
+            let unions: Vec<String> = value_cols
+                .iter()
+                .map(|col_name| {
+                    format!(
+                        "SELECT {index_select}'{col_name}' AS \"column_name\", CAST(\"{col_name}\" AS VARCHAR) AS \"value\" FROM __src"
+                    )
+                })
+                .collect();
+            let query = unions.join(" UNION ALL ");
+            ctx.execute(&query)
+                .map_err(|e| TeckelError::Execution(format!("polars transpose: {e}")))?
+                .collect()
+                .map_err(|e| TeckelError::Execution(format!("polars transpose collect: {e}")))
+        }
+        Source::GroupingSets(t) => {
+            let df = get(cache, &t.from)?;
+            let mut ctx = polars::sql::SQLContext::new();
+            ctx.register("__src", df.lazy());
+            let sets_sql: Vec<String> = t
+                .sets
+                .iter()
+                .map(|set| {
+                    let cols = set.join(", ");
+                    format!("({cols})")
+                })
+                .collect();
+            let agg_exprs = t.agg.join(", ");
+            let all_group_cols: Vec<String> = t
+                .sets
+                .iter()
+                .flat_map(|set| set.iter().cloned())
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect();
+            let select_cols = all_group_cols.join(", ");
+            let query = format!(
+                "SELECT {select_cols}, {agg_exprs} FROM __src GROUP BY GROUPING SETS({})",
+                sets_sql.join(", ")
+            );
+            ctx.execute(&query)
+                .map_err(|e| TeckelError::Execution(format!("polars groupingSets: {e}")))?
+                .collect()
+                .map_err(|e| TeckelError::Execution(format!("polars groupingSets collect: {e}")))
+        }
+        Source::Describe(t) => {
+            let df = get(cache, &t.from)?;
+            let mut ctx = polars::sql::SQLContext::new();
+            ctx.register("__src", df.clone().lazy());
+            let target_cols: Vec<String> = match &t.columns {
+                Some(cols) => cols.clone(),
+                None => df.get_column_names_str().iter().map(|s| s.to_string()).collect(),
+            };
+            let default_stats = vec!["count", "mean", "stddev", "min", "max"];
+            let stats: Vec<&str> = match &t.statistics {
+                Some(s) => s.iter().map(|x| x.as_str()).collect(),
+                None => default_stats,
+            };
+            let mut stat_queries = Vec::new();
+            for stat in &stats {
+                let projections: Vec<String> = target_cols
+                    .iter()
+                    .map(|c| {
+                        let expr = match *stat {
+                            "count" => format!("CAST(COUNT(\"{c}\") AS VARCHAR)"),
+                            "mean" | "avg" => format!("CAST(AVG(CAST(\"{c}\" AS DOUBLE)) AS VARCHAR)"),
+                            "stddev" | "std" => format!("CAST(STDDEV(CAST(\"{c}\" AS DOUBLE)) AS VARCHAR)"),
+                            "min" => format!("CAST(MIN(\"{c}\") AS VARCHAR)"),
+                            "max" => format!("CAST(MAX(\"{c}\") AS VARCHAR)"),
+                            other => format!("'{other}: unsupported'"),
+                        };
+                        format!("{expr} AS \"{c}\"")
+                    })
+                    .collect();
+                stat_queries.push(format!(
+                    "SELECT '{stat}' AS \"statistic\", {} FROM __src",
+                    projections.join(", ")
+                ));
+            }
+            let query = stat_queries.join(" UNION ALL ");
+            ctx.execute(&query)
+                .map_err(|e| TeckelError::Execution(format!("polars describe: {e}")))?
+                .collect()
+                .map_err(|e| TeckelError::Execution(format!("polars describe collect: {e}")))
+        }
+        Source::Crosstab(t) => {
+            let df = get(cache, &t.from)?;
+            let mut ctx = polars::sql::SQLContext::new();
+            ctx.register("__src", df.clone().lazy());
+            // Get distinct values of col2
+            let distinct_q = format!("SELECT DISTINCT \"{}\" FROM __src", t.col2);
+            let distinct_df = ctx.execute(&distinct_q)
+                .map_err(|e| TeckelError::Execution(format!("polars crosstab distinct: {e}")))?
+                .collect()
+                .map_err(|e| TeckelError::Execution(format!("polars crosstab distinct collect: {e}")))?;
+            let col2_values: Vec<String> = distinct_df
+                .column(&t.col2)
+                .map_err(|e| TeckelError::Execution(format!("polars crosstab col: {e}")))?
+                .str()
+                .map_err(|e| TeckelError::Execution(format!("polars crosstab str: {e}")))?
+                .into_no_null_iter()
+                .map(|s| s.to_string())
+                .collect();
+            let pivot_exprs: Vec<String> = col2_values
+                .iter()
+                .map(|val| {
+                    format!(
+                        "COUNT(*) FILTER (WHERE \"{}\" = '{val}') AS \"{val}\"",
+                        t.col2
+                    )
+                })
+                .collect();
+            let query = format!(
+                "SELECT \"{}\", {} FROM __src GROUP BY \"{}\"",
+                t.col1,
+                pivot_exprs.join(", "),
+                t.col1
+            );
+            // Re-register since ctx may have been consumed
+            ctx.register("__src", get(cache, &t.from)?.lazy());
+            ctx.execute(&query)
+                .map_err(|e| TeckelError::Execution(format!("polars crosstab: {e}")))?
+                .collect()
+                .map_err(|e| TeckelError::Execution(format!("polars crosstab collect: {e}")))
+        }
+        Source::Hint(t) => {
+            // Hints are optimizer directives — not applicable in Polars. Pass through.
+            let df = get(cache, &t.from)?;
+            for hint in &t.hints {
+                tracing::info!(
+                    hint = hint.name.as_str(),
+                    "ignoring optimizer hint (not supported in polars backend)"
+                );
+            }
+            Ok(df)
+        }
         Source::Input(_) | Source::Output(_) => Err(TeckelError::Execution(
             "Input/Output handled by executor".to_string(),
         )),
+    }
+}
+
+fn polars_primitive_to_sql(p: &teckel_model::types::Primitive) -> String {
+    match p {
+        teckel_model::types::Primitive::Bool(b) => b.to_string(),
+        teckel_model::types::Primitive::Int(i) => i.to_string(),
+        teckel_model::types::Primitive::Float(f) => f.to_string(),
+        teckel_model::types::Primitive::String(s) => {
+            let escaped = s.replace('\'', "''");
+            format!("'{escaped}'")
+        }
     }
 }
 
