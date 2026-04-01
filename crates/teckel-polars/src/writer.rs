@@ -12,7 +12,10 @@ pub fn write_output(mut df: DataFrame, output: &OutputSource) -> Result<(), Teck
             if path.exists() {
                 return Err(TeckelError::spec(
                     teckel_model::TeckelErrorCode::EIo002,
-                    format!("output path \"{}\" already exists (mode: error)", output.path),
+                    format!(
+                        "output path \"{}\" already exists (mode: error)",
+                        output.path
+                    ),
                 ));
             }
         }

@@ -34,7 +34,11 @@ pub async fn etl_with<B: Backend + 'static>(
     };
 
     // Post-execution hooks (§16) — always run, regardless of pipeline result
-    let status = if result.is_ok() { "completed" } else { "failed" };
+    let status = if result.is_ok() {
+        "completed"
+    } else {
+        "failed"
+    };
     teckel_engine::hooks::run_post_hooks(&pipeline.hooks, status, None).await;
 
     // Quality suites (§17) — run after successful execution
@@ -93,9 +97,10 @@ pub async fn inspect(
     let backend = DataFusionBackend::new();
     let df = backend.read_input(&input).await?;
     let schema = df.schema().clone();
-    let row_count = df.count().await.map_err(|e| {
-        TeckelError::Execution(format!("failed to count rows: {e}"))
-    })?;
+    let row_count = df
+        .count()
+        .await
+        .map_err(|e| TeckelError::Execution(format!("failed to count rows: {e}")))?;
 
     let fields = schema
         .fields()

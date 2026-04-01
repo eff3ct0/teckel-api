@@ -60,7 +60,10 @@ impl RemoteBackend {
             .execute_pipeline(proto::ExecutePipelineRequest {
                 session_id: self.session_id.clone(),
                 yaml: yaml.to_string(),
-                variables: variables.iter().map(|(k, v)| (k.clone(), v.clone())).collect::<HashMap<_, _>>(),
+                variables: variables
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect::<HashMap<_, _>>(),
             })
             .await
             .map_err(|e| TeckelError::Execution(format!("execute pipeline: {e}")))?;
@@ -129,11 +132,7 @@ impl Backend for RemoteBackend {
         })
     }
 
-    async fn write_output(
-        &self,
-        df: RemoteRef,
-        output: &OutputSource,
-    ) -> Result<(), TeckelError> {
+    async fn write_output(&self, df: RemoteRef, output: &OutputSource) -> Result<(), TeckelError> {
         let mode = format!("{:?}", output.mode).to_lowercase();
         let options: HashMap<String, String> = output
             .options

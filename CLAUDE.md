@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**teckel-api** is the execution layer for Teckel v2.0 pipelines. It depends on [teckel-rs](https://github.com/eff3ct0/teckel-rs) for parsing YAML into a typed domain model, then executes the pipeline DAG using a pluggable backend (currently DataFusion).
+**teckel-api** is the execution layer for Teckel v3.0 pipelines. It depends on [teckel-rs](https://github.com/eff3ct0/teckel-rs) for parsing YAML into a typed domain model, then executes the pipeline DAG using a pluggable backend (currently DataFusion).
 
 ## Build & Test
 

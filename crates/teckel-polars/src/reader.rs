@@ -20,9 +20,8 @@ pub fn read_input(input: &InputSource) -> Result<DataFrame, TeckelError> {
                     .chars()
                     .next()
                     .unwrap_or(',');
-                reader = reader.with_parse_options(
-                    CsvParseOptions::default().with_separator(sep_char as u8),
-                );
+                reader = reader
+                    .with_parse_options(CsvParseOptions::default().with_separator(sep_char as u8));
             }
 
             reader

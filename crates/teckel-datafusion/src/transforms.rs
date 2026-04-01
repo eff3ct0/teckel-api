@@ -1001,10 +1001,9 @@ pub async fn apply(
                 .map(|f| f.name().clone())
                 .collect();
 
-            let target_cols: Vec<&str> = if t.columns.is_none() {
-                schema_fields.iter().map(|s| s.as_str()).collect()
-            } else {
-                t.columns.as_ref().unwrap().iter().map(|s| s.as_str()).collect()
+            let target_cols: Vec<&str> = match &t.columns {
+                None => schema_fields.iter().map(|s| s.as_str()).collect(),
+                Some(c) => c.iter().map(|s| s.as_str()).collect(),
             };
 
             let projections: Vec<String> = schema_fields
@@ -1012,7 +1011,7 @@ pub async fn apply(
                 .map(|col_name| {
                     if target_cols.contains(&col_name.as_str()) && !t.mappings.is_empty() {
                         // Build nested CASE for replacements
-                        let mut case_sql = format!("CASE");
+                        let mut case_sql = "CASE".to_string();
                         for replacement in &t.mappings {
                             let old_val = primitive_to_sql(&replacement.old);
                             let new_val = primitive_to_sql(&replacement.new);

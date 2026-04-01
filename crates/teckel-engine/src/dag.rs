@@ -166,6 +166,8 @@ mod tests {
                     source: Source::Union(UnionTransform {
                         sources: vec!["b".to_string(), "c".to_string()],
                         all: true,
+                        by_name: false,
+                        allow_missing_columns: false,
                     }),
                     metadata: AssetMetadata::default(),
                 },

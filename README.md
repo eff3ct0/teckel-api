@@ -1,6 +1,6 @@
 # teckel-api
 
-Execution engine and DataFusion backend for [Teckel v2.0](https://github.com/eff3ct0/teckel-spec) pipelines. Parses YAML pipeline definitions (via [teckel-rs](https://github.com/eff3ct0/teckel-rs)) and executes them using Apache DataFusion.
+Execution engine and DataFusion backend for [Teckel v3.0](https://github.com/eff3ct0/teckel-spec) pipelines. Parses YAML pipeline definitions (via [teckel-rs](https://github.com/eff3ct0/teckel-rs)) and executes them using Apache DataFusion.
 
 ## Architecture
 

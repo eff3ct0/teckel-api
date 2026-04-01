@@ -230,9 +230,11 @@ impl TeckelService for TeckelWorker {
         request: Request<proto::WaitForJobRequest>,
     ) -> Result<Response<proto::JobResponse>, Status> {
         let req = request.into_inner();
-        let timeout = std::time::Duration::from_secs(
-            if req.timeout_seconds == 0 { 300 } else { req.timeout_seconds as u64 }
-        );
+        let timeout = std::time::Duration::from_secs(if req.timeout_seconds == 0 {
+            300
+        } else {
+            req.timeout_seconds as u64
+        });
         let start = Instant::now();
 
         loop {
@@ -393,7 +395,9 @@ impl TeckelService for TeckelWorker {
         if !self.sessions.contains_key(&req.session_id) {
             return Err(Status::not_found("session not found"));
         }
-        Ok(Response::new(proto::WriteOutputResponse { rows_written: 0 }))
+        Ok(Response::new(proto::WriteOutputResponse {
+            rows_written: 0,
+        }))
     }
 
     async fn execute_pipeline(

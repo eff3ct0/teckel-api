@@ -45,6 +45,26 @@ pub fn teckel_to_arrow(dt: &TeckelDataType) -> ArrowDataType {
                 .collect();
             ArrowDataType::Struct(arrow_fields.into())
         }
+        TeckelDataType::Byte => ArrowDataType::Int8,
+        TeckelDataType::Short => ArrowDataType::Int16,
+        TeckelDataType::Char(_) | TeckelDataType::VarChar(_) => ArrowDataType::Utf8,
+        TeckelDataType::TimestampNtz => {
+            ArrowDataType::Timestamp(arrow::datatypes::TimeUnit::Microsecond, None)
+        }
+        TeckelDataType::Time(precision) => {
+            if precision.unwrap_or(6) <= 3 {
+                ArrowDataType::Time32(arrow::datatypes::TimeUnit::Millisecond)
+            } else {
+                ArrowDataType::Time64(arrow::datatypes::TimeUnit::Microsecond)
+            }
+        }
+        TeckelDataType::YearMonthInterval => {
+            ArrowDataType::Interval(arrow::datatypes::IntervalUnit::YearMonth)
+        }
+        TeckelDataType::DayTimeInterval => {
+            ArrowDataType::Interval(arrow::datatypes::IntervalUnit::DayTime)
+        }
+        TeckelDataType::Variant => ArrowDataType::Utf8, // variant stored as JSON string
     }
 }
 

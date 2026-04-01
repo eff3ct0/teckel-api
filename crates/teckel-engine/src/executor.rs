@@ -128,14 +128,12 @@ async fn execute_asset_inner<B: Backend>(
             tracing::debug!(asset = %asset_name, source = %output.asset_ref, "writing output");
             let df = {
                 let c = cache.read().await;
-                c.get(&output.asset_ref)
-                    .cloned()
-                    .ok_or_else(|| {
-                        TeckelError::Execution(format!(
-                            "output \"{}\" references asset \"{}\" which has no computed result",
-                            asset_name, output.asset_ref
-                        ))
-                    })?
+                c.get(&output.asset_ref).cloned().ok_or_else(|| {
+                    TeckelError::Execution(format!(
+                        "output \"{}\" references asset \"{}\" which has no computed result",
+                        asset_name, output.asset_ref
+                    ))
+                })?
             };
             backend.write_output(df, output).await?;
         }

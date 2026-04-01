@@ -59,7 +59,8 @@ where
         tracing::info!(suite = %suite.suite, target = %suite.target, "running quality suite");
 
         for check in &suite.checks {
-            let result = run_check(&suite.suite, &suite.target, &suite.filter, check, &query_fn).await;
+            let result =
+                run_check(&suite.suite, &suite.target, &suite.filter, check, &query_fn).await;
             match result {
                 Ok(r) => {
                     if !r.passed {
@@ -120,8 +121,14 @@ where
                 c.column
             );
             let rows = query_fn(query).await?;
-            let total: f64 = rows[0].get("total").and_then(|v| v.parse().ok()).unwrap_or(0.0);
-            let non_null: f64 = rows[0].get("non_null").and_then(|v| v.parse().ok()).unwrap_or(0.0);
+            let total: f64 = rows[0]
+                .get("total")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.0);
+            let non_null: f64 = rows[0]
+                .get("non_null")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.0);
             let ratio = if total > 0.0 { non_null / total } else { 1.0 };
             let severity = c.severity.clone().unwrap_or(Severity::Error);
             Ok(CheckResult {
@@ -143,8 +150,14 @@ where
                 "SELECT COUNT(*) as total, COUNT(DISTINCT(\"{cols}\")) as distinct_count FROM \"{target}\"{where_clause}"
             );
             let rows = query_fn(query).await?;
-            let total: f64 = rows[0].get("total").and_then(|v| v.parse().ok()).unwrap_or(0.0);
-            let distinct: f64 = rows[0].get("distinct_count").and_then(|v| v.parse().ok()).unwrap_or(0.0);
+            let total: f64 = rows[0]
+                .get("total")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.0);
+            let distinct: f64 = rows[0]
+                .get("distinct_count")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.0);
             let ratio = if total > 0.0 { distinct / total } else { 1.0 };
             Ok(CheckResult {
                 suite: suite_name.to_string(),
@@ -153,7 +166,9 @@ where
                 severity: Severity::Error,
                 message: format!(
                     "uniqueness({}) = {:.4} (threshold: {:.4})",
-                    c.columns.join(", "), ratio, c.threshold
+                    c.columns.join(", "),
+                    ratio,
+                    c.threshold
                 ),
                 metric: Some(ratio),
             })
@@ -162,8 +177,15 @@ where
         Check::Volume(c) => {
             let query = format!("SELECT COUNT(*) as row_count FROM \"{target}\"{where_clause}");
             let rows = query_fn(query).await?;
-            let row_count: f64 = rows[0].get("row_count").and_then(|v| v.parse().ok()).unwrap_or(0.0);
-            let passed = c.row_count.as_ref().map(|b| check_bound(row_count, b)).unwrap_or(true);
+            let row_count: f64 = rows[0]
+                .get("row_count")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.0);
+            let passed = c
+                .row_count
+                .as_ref()
+                .map(|b| check_bound(row_count, b))
+                .unwrap_or(true);
             Ok(CheckResult {
                 suite: suite_name.to_string(),
                 check_type: "volume".to_string(),
@@ -210,15 +232,24 @@ where
                 "SELECT COUNT(*) as total, SUM(CASE WHEN {cond} THEN 1 ELSE 0 END) as valid FROM \"{target}\"{where_clause}"
             );
             let rows = query_fn(query).await?;
-            let total: f64 = rows[0].get("total").and_then(|v| v.parse().ok()).unwrap_or(0.0);
-            let valid: f64 = rows[0].get("valid").and_then(|v| v.parse().ok()).unwrap_or(0.0);
+            let total: f64 = rows[0]
+                .get("total")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.0);
+            let valid: f64 = rows[0]
+                .get("valid")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.0);
             let ratio = if total > 0.0 { valid / total } else { 1.0 };
             Ok(CheckResult {
                 suite: suite_name.to_string(),
                 check_type: "validity".to_string(),
                 passed: ratio >= c.threshold,
                 severity: Severity::Error,
-                message: format!("validity({}) = {:.4} (threshold: {:.4})", c.column, ratio, c.threshold),
+                message: format!(
+                    "validity({}) = {:.4} (threshold: {:.4})",
+                    c.column, ratio, c.threshold
+                ),
                 metric: Some(ratio),
             })
         }
@@ -262,30 +293,44 @@ where
                 col = c.column
             );
             let rows = query_fn(query).await?;
-            let get_f64 = |key: &str| -> f64 {
-                rows[0].get(key).and_then(|v| v.parse().ok()).unwrap_or(0.0)
-            };
+            let get_f64 =
+                |key: &str| -> f64 { rows[0].get(key).and_then(|v| v.parse().ok()).unwrap_or(0.0) };
             let mut passed = true;
             let mut details = Vec::new();
             if let Some(b) = &c.mean {
                 let v = get_f64("mean_val");
-                if !check_bound(v, b) { passed = false; details.push(format!("mean={v}")); }
+                if !check_bound(v, b) {
+                    passed = false;
+                    details.push(format!("mean={v}"));
+                }
             }
             if let Some(b) = &c.min {
                 let v = get_f64("min_val");
-                if !check_bound(v, b) { passed = false; details.push(format!("min={v}")); }
+                if !check_bound(v, b) {
+                    passed = false;
+                    details.push(format!("min={v}"));
+                }
             }
             if let Some(b) = &c.max {
                 let v = get_f64("max_val");
-                if !check_bound(v, b) { passed = false; details.push(format!("max={v}")); }
+                if !check_bound(v, b) {
+                    passed = false;
+                    details.push(format!("max={v}"));
+                }
             }
             if let Some(b) = &c.sum {
                 let v = get_f64("sum_val");
-                if !check_bound(v, b) { passed = false; details.push(format!("sum={v}")); }
+                if !check_bound(v, b) {
+                    passed = false;
+                    details.push(format!("sum={v}"));
+                }
             }
             if let Some(b) = &c.stdev {
                 let v = get_f64("stdev_val");
-                if !check_bound(v, b) { passed = false; details.push(format!("stdev={v}")); }
+                if !check_bound(v, b) {
+                    passed = false;
+                    details.push(format!("stdev={v}"));
+                }
             }
             Ok(CheckResult {
                 suite: suite_name.to_string(),
@@ -311,7 +356,10 @@ where
                 check_type: "freshness".to_string(),
                 passed: !latest.is_empty(),
                 severity: Severity::Error,
-                message: format!("freshness({}): latest = {latest}, max_age = {}", c.column, c.max_age),
+                message: format!(
+                    "freshness({}): latest = {latest}, max_age = {}",
+                    c.column, c.max_age
+                ),
                 metric: None,
             })
         }
@@ -327,8 +375,14 @@ where
                 ref_col = c.reference_column
             );
             let rows = query_fn(query).await?;
-            let total: f64 = rows[0].get("total").and_then(|v| v.parse().ok()).unwrap_or(0.0);
-            let matched: f64 = rows[0].get("matched").and_then(|v| v.parse().ok()).unwrap_or(0.0);
+            let total: f64 = rows[0]
+                .get("total")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.0);
+            let matched: f64 = rows[0]
+                .get("matched")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.0);
             let ratio = if total > 0.0 { matched / total } else { 1.0 };
             Ok(CheckResult {
                 suite: suite_name.to_string(),
@@ -351,8 +405,14 @@ where
                 cond = c.condition
             );
             let rows = query_fn(query).await?;
-            let total: f64 = rows[0].get("total").and_then(|v| v.parse().ok()).unwrap_or(0.0);
-            let passing: f64 = rows[0].get("passing").and_then(|v| v.parse().ok()).unwrap_or(0.0);
+            let total: f64 = rows[0]
+                .get("total")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.0);
+            let passing: f64 = rows[0]
+                .get("passing")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.0);
             let ratio = if total > 0.0 { passing / total } else { 1.0 };
             Ok(CheckResult {
                 suite: suite_name.to_string(),
@@ -361,7 +421,9 @@ where
                 severity: Severity::Error,
                 message: format!(
                     "crossColumn({}) = {:.4} (threshold: {:.4})",
-                    c.description.as_deref().unwrap_or(&c.condition), ratio, c.threshold
+                    c.description.as_deref().unwrap_or(&c.condition),
+                    ratio,
+                    c.threshold
                 ),
                 metric: Some(ratio),
             })
@@ -375,8 +437,14 @@ where
                 cond = c.condition
             );
             let rows = query_fn(query).await?;
-            let total: f64 = rows[0].get("total").and_then(|v| v.parse().ok()).unwrap_or(0.0);
-            let passing: f64 = rows[0].get("passing").and_then(|v| v.parse().ok()).unwrap_or(0.0);
+            let total: f64 = rows[0]
+                .get("total")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.0);
+            let passing: f64 = rows[0]
+                .get("passing")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0.0);
             let ratio = if total > 0.0 { passing / total } else { 1.0 };
             Ok(CheckResult {
                 suite: suite_name.to_string(),
@@ -385,7 +453,9 @@ where
                 severity: Severity::Error,
                 message: format!(
                     "custom({}) = {:.4} (threshold: {:.4})",
-                    c.description.as_deref().unwrap_or(&c.condition), ratio, c.threshold
+                    c.description.as_deref().unwrap_or(&c.condition),
+                    ratio,
+                    c.threshold
                 ),
                 metric: Some(ratio),
             })

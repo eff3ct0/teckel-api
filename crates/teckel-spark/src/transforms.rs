@@ -38,7 +38,8 @@ pub async fn apply(
 
             let group_cols = t.by.join(", ");
             let agg_exprs = t.agg.join(", ");
-            let query = format!("SELECT {group_cols}, {agg_exprs} FROM {view} GROUP BY {group_cols}");
+            let query =
+                format!("SELECT {group_cols}, {agg_exprs} FROM {view} GROUP BY {group_cols}");
             session
                 .sql(&query)
                 .await
@@ -58,10 +59,22 @@ pub async fn apply(
                     } => {
                         let c = col(column.as_str());
                         match (direction, nulls) {
-                            (teckel_model::types::SortDirection::Asc, teckel_model::types::NullOrdering::First) => c.asc_nulls_first(),
-                            (teckel_model::types::SortDirection::Asc, teckel_model::types::NullOrdering::Last) => c.asc_nulls_last(),
-                            (teckel_model::types::SortDirection::Desc, teckel_model::types::NullOrdering::First) => c.desc_nulls_first(),
-                            (teckel_model::types::SortDirection::Desc, teckel_model::types::NullOrdering::Last) => c.desc_nulls_last(),
+                            (
+                                teckel_model::types::SortDirection::Asc,
+                                teckel_model::types::NullOrdering::First,
+                            ) => c.asc_nulls_first(),
+                            (
+                                teckel_model::types::SortDirection::Asc,
+                                teckel_model::types::NullOrdering::Last,
+                            ) => c.asc_nulls_last(),
+                            (
+                                teckel_model::types::SortDirection::Desc,
+                                teckel_model::types::NullOrdering::First,
+                            ) => c.desc_nulls_first(),
+                            (
+                                teckel_model::types::SortDirection::Desc,
+                                teckel_model::types::NullOrdering::Last,
+                            ) => c.desc_nulls_last(),
                         }
                     }
                 })
@@ -72,7 +85,10 @@ pub async fn apply(
             // Use SQL for joins since spark-connect-rs join API differs from teckel's model
             let mut views_to_register = vec![(&t.left, "__teckel_join_left")];
             for (i, target) in t.right.iter().enumerate() {
-                views_to_register.push((&target.name, Box::leak(format!("__teckel_join_right_{i}").into_boxed_str())));
+                views_to_register.push((
+                    &target.name,
+                    Box::leak(format!("__teckel_join_right_{i}").into_boxed_str()),
+                ));
             }
 
             for (asset_ref, view_name) in &views_to_register {
@@ -82,7 +98,7 @@ pub async fn apply(
                     .map_err(|e| TeckelError::Execution(format!("join register: {e}")))?;
             }
 
-            let mut query = format!("SELECT * FROM __teckel_join_left");
+            let mut query = "SELECT * FROM __teckel_join_left".to_string();
             for (i, target) in t.right.iter().enumerate() {
                 let join_type = match target.join_type {
                     teckel_model::types::JoinType::Inner => "INNER JOIN",
@@ -97,7 +113,9 @@ pub async fn apply(
                 if matches!(target.join_type, teckel_model::types::JoinType::Cross) {
                     query.push_str(&format!(" {join_type} __teckel_join_right_{i}"));
                 } else {
-                    query.push_str(&format!(" {join_type} __teckel_join_right_{i} ON {condition}"));
+                    query.push_str(&format!(
+                        " {join_type} __teckel_join_right_{i} ON {condition}"
+                    ));
                 }
             }
 
@@ -115,9 +133,13 @@ pub async fn apply(
             let mut result = dfs.remove(0);
             for df in dfs {
                 result = if t.all {
-                    result.union_all(df).map_err(|e| TeckelError::Execution(format!("union: {e}")))?
+                    result
+                        .union_all(df)
+                        .map_err(|e| TeckelError::Execution(format!("union: {e}")))?
                 } else {
-                    result.union(df).map_err(|e| TeckelError::Execution(format!("union: {e}")))?
+                    result
+                        .union(df)
+                        .map_err(|e| TeckelError::Execution(format!("union: {e}")))?
                 };
             }
             Ok(result)
@@ -130,7 +152,9 @@ pub async fn apply(
                 .collect::<Result<Vec<_>, _>>()?;
             let mut result = dfs.remove(0);
             for df in dfs {
-                result = result.intersect(df).map_err(|e| TeckelError::Execution(format!("intersect: {e}")))?;
+                result = result
+                    .intersect(df)
+                    .map_err(|e| TeckelError::Execution(format!("intersect: {e}")))?;
             }
             Ok(result)
         }
@@ -176,7 +200,9 @@ pub async fn apply(
                 let df = get(cache, view_name)?;
                 df.create_or_replace_temp_view(view_name)
                     .await
-                    .map_err(|e| TeckelError::Execution(format!("register view \"{view_name}\": {e}")))?;
+                    .map_err(|e| {
+                        TeckelError::Execution(format!("register view \"{view_name}\": {e}"))
+                    })?;
             }
             session
                 .sql(&t.query)
@@ -232,20 +258,28 @@ pub async fn apply(
             let order_clause = if t.order_by.is_empty() {
                 String::new()
             } else {
-                let parts: Vec<String> = t.order_by.iter().map(|sc| match sc {
-                    teckel_model::types::SortColumn::Simple(name) => name.clone(),
-                    teckel_model::types::SortColumn::Explicit { column, direction, nulls } => {
-                        let dir = match direction {
-                            teckel_model::types::SortDirection::Asc => "ASC",
-                            teckel_model::types::SortDirection::Desc => "DESC",
-                        };
-                        let ns = match nulls {
-                            teckel_model::types::NullOrdering::First => "NULLS FIRST",
-                            teckel_model::types::NullOrdering::Last => "NULLS LAST",
-                        };
-                        format!("{column} {dir} {ns}")
-                    }
-                }).collect();
+                let parts: Vec<String> = t
+                    .order_by
+                    .iter()
+                    .map(|sc| match sc {
+                        teckel_model::types::SortColumn::Simple(name) => name.clone(),
+                        teckel_model::types::SortColumn::Explicit {
+                            column,
+                            direction,
+                            nulls,
+                        } => {
+                            let dir = match direction {
+                                teckel_model::types::SortDirection::Asc => "ASC",
+                                teckel_model::types::SortDirection::Desc => "DESC",
+                            };
+                            let ns = match nulls {
+                                teckel_model::types::NullOrdering::First => "NULLS FIRST",
+                                teckel_model::types::NullOrdering::Last => "NULLS LAST",
+                            };
+                            format!("{column} {dir} {ns}")
+                        }
+                    })
+                    .collect();
                 format!("ORDER BY {}", parts.join(", "))
             };
 
@@ -259,7 +293,8 @@ pub async fn apply(
                 t.frame.end
             );
 
-            let window_spec = format!("PARTITION BY {partition_clause} {order_clause} {frame_clause}");
+            let window_spec =
+                format!("PARTITION BY {partition_clause} {order_clause} {frame_clause}");
             let func_exprs: Vec<String> = t
                 .functions
                 .iter()
@@ -283,8 +318,16 @@ pub async fn apply(
             let group_by_cols = t.group_by.join(", ");
             let agg_exprs = t.agg.join(", ");
             let values_clause = match &t.values {
-                Some(vals) => vals.iter().map(|v| format!("'{v}'")).collect::<Vec<_>>().join(", "),
-                None => return Err(TeckelError::Execution("pivot requires explicit values for Spark backend".to_string())),
+                Some(vals) => vals
+                    .iter()
+                    .map(|v| format!("'{v}'"))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                None => {
+                    return Err(TeckelError::Execution(
+                        "pivot requires explicit values for Spark backend".to_string(),
+                    ))
+                }
             };
             let query = format!(
                 "SELECT * FROM (SELECT {group_by_cols}, {} FROM {view}) PIVOT ({agg_exprs} FOR {} IN ({values_clause}))",
@@ -439,20 +482,16 @@ pub async fn apply(
                     .map_err(|e| TeckelError::Execution(format!("dropNa thresh: {e}")))
             } else {
                 let condition = match t.how {
-                    teckel_model::types::DropNaHow::Any => {
-                        target_cols
-                            .iter()
-                            .map(|c| format!("`{c}` IS NOT NULL"))
-                            .collect::<Vec<_>>()
-                            .join(" AND ")
-                    }
-                    teckel_model::types::DropNaHow::All => {
-                        target_cols
-                            .iter()
-                            .map(|c| format!("`{c}` IS NOT NULL"))
-                            .collect::<Vec<_>>()
-                            .join(" OR ")
-                    }
+                    teckel_model::types::DropNaHow::Any => target_cols
+                        .iter()
+                        .map(|c| format!("`{c}` IS NOT NULL"))
+                        .collect::<Vec<_>>()
+                        .join(" AND "),
+                    teckel_model::types::DropNaHow::All => target_cols
+                        .iter()
+                        .map(|c| format!("`{c}` IS NOT NULL"))
+                        .collect::<Vec<_>>()
+                        .join(" OR "),
                 };
                 let query = format!("SELECT * FROM {view} WHERE {condition}");
                 session
@@ -559,8 +598,7 @@ pub async fn apply(
                     .unwrap_or_default();
                 if matches!(action.action, teckel_model::types::MergeActionType::Insert) {
                     if action.star {
-                        merge_sql
-                            .push_str(&format!(" WHEN NOT MATCHED{cond} THEN INSERT *"));
+                        merge_sql.push_str(&format!(" WHEN NOT MATCHED{cond} THEN INSERT *"));
                     } else if let Some(ref set) = action.set {
                         let cols: Vec<&str> = set.keys().map(|k| k.as_str()).collect();
                         let vals: Vec<&str> = set.values().map(|v| v.as_str()).collect();
@@ -652,7 +690,10 @@ pub async fn apply(
                     format!("r.`{}`", t.right_as_of)
                 }
                 teckel_model::types::AsOfDirection::Nearest => {
-                    format!("ABS(CAST(r.`{}` AS LONG) - CAST(l.`{}` AS LONG))", t.right_as_of, t.left_as_of)
+                    format!(
+                        "ABS(CAST(r.`{}` AS LONG) - CAST(l.`{}` AS LONG))",
+                        t.right_as_of, t.left_as_of
+                    )
                 }
             };
 
@@ -718,7 +759,8 @@ pub async fn apply(
                 .map_err(|e| TeckelError::Execution(format!("transpose columns: {e}")))?;
 
             let index_cols = &t.index_columns;
-            let value_cols: Vec<&String> = schema.iter().filter(|c| !index_cols.contains(c)).collect();
+            let value_cols: Vec<&String> =
+                schema.iter().filter(|c| !index_cols.contains(c)).collect();
 
             if value_cols.is_empty() {
                 return session
@@ -730,7 +772,11 @@ pub async fn apply(
             let index_select = if index_cols.is_empty() {
                 String::new()
             } else {
-                let idx = index_cols.iter().map(|c| format!("`{c}`")).collect::<Vec<_>>().join(", ");
+                let idx = index_cols
+                    .iter()
+                    .map(|c| format!("`{c}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 format!("{idx}, ")
             };
 
@@ -824,10 +870,7 @@ pub async fn apply(
                     }
                 })
                 .collect();
-            let query = format!(
-                "SELECT /*+ {} */ * FROM {view}",
-                hints_sql.join(", ")
-            );
+            let query = format!("SELECT /*+ {} */ * FROM {view}", hints_sql.join(", "));
             session
                 .sql(&query)
                 .await

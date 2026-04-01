@@ -1,6 +1,6 @@
 [package]
 name = "teckel-api"
-description = "High-level API for parsing and executing Teckel v2.0 pipelines"
+description = "High-level API for parsing and executing Teckel v3.0 pipelines"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

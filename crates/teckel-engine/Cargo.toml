@@ -1,6 +1,6 @@
 [package]
 name = "teckel-engine"
-description = "Engine-agnostic pipeline orchestration: Backend trait, DAG executor, and dry-run for Teckel v2.0"
+description = "Engine-agnostic pipeline orchestration: Backend trait, DAG executor, and dry-run for Teckel v3.0"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

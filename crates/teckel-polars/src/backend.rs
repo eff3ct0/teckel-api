@@ -33,7 +33,10 @@ impl Backend for PolarsBackend {
         "polars"
     }
 
-    async fn read_input(&self, input: &InputSource) -> Result<polars::frame::DataFrame, TeckelError> {
+    async fn read_input(
+        &self,
+        input: &InputSource,
+    ) -> Result<polars::frame::DataFrame, TeckelError> {
         reader::read_input(input)
     }
 

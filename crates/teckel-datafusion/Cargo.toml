@@ -1,6 +1,6 @@
 [package]
 name = "teckel-datafusion"
-description = "Apache DataFusion local backend for Teckel v2.0 pipeline execution"
+description = "Apache DataFusion local backend for Teckel v3.0 pipeline execution"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

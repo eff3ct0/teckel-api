@@ -515,10 +515,9 @@ pub fn apply(
             let mut ctx = polars::sql::SQLContext::new();
             ctx.register("__src", df.clone().lazy());
             let cols: Vec<String> = df.get_column_names_str().iter().map(|s| s.to_string()).collect();
-            let target_cols: Vec<&str> = if t.columns.is_none() {
-                cols.iter().map(|s| s.as_str()).collect()
-            } else {
-                t.columns.as_ref().unwrap().iter().map(|s| s.as_str()).collect()
+            let target_cols: Vec<&str> = match &t.columns {
+                None => cols.iter().map(|s| s.as_str()).collect(),
+                Some(c) => c.iter().map(|s| s.as_str()).collect(),
             };
             let projections: Vec<String> = cols
                 .iter()
@@ -812,7 +811,8 @@ fn sql_agg(
     ctx.register("__src", df.lazy());
     let by_cols = by.join(", ");
     let agg_exprs = agg.join(", ");
-    let query = format!("SELECT {by_cols}, {agg_exprs} FROM __src GROUP BY {group_type}({by_cols})");
+    let query =
+        format!("SELECT {by_cols}, {agg_exprs} FROM __src GROUP BY {group_type}({by_cols})");
     ctx.execute(&query)
         .map_err(|e| TeckelError::Execution(format!("polars {group_type}: {e}")))?
         .collect()
@@ -820,18 +820,25 @@ fn sql_agg(
 }
 
 fn get(cache: &BTreeMap<String, DataFrame>, name: &str) -> Result<DataFrame, TeckelError> {
-    cache.get(name).cloned().ok_or_else(|| {
-        TeckelError::Execution(format!("asset \"{name}\" not found in cache"))
-    })
+    cache
+        .get(name)
+        .cloned()
+        .ok_or_else(|| TeckelError::Execution(format!("asset \"{name}\" not found in cache")))
 }
 
 fn parse_polars_expr(expr_str: &str) -> Expr {
     let trimmed = expr_str.trim();
-    if trimmed.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+    if trimmed
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_')
+    {
         return col(trimmed);
     }
     if let Some((_, column)) = trimmed.split_once('.') {
-        if column.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        if column
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_')
+        {
             return col(column);
         }
     }
@@ -856,7 +863,11 @@ fn parse_polars_dtype(type_str: &str) -> DataType {
 fn sort_col_to_sql(sc: &teckel_model::types::SortColumn) -> String {
     match sc {
         teckel_model::types::SortColumn::Simple(name) => name.clone(),
-        teckel_model::types::SortColumn::Explicit { column, direction, nulls } => {
+        teckel_model::types::SortColumn::Explicit {
+            column,
+            direction,
+            nulls,
+        } => {
             let dir = match direction {
                 teckel_model::types::SortDirection::Asc => "ASC",
                 teckel_model::types::SortDirection::Desc => "DESC",
