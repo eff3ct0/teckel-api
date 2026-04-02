@@ -8,27 +8,6 @@ The Teckel Engine is organized into a layered architecture that separates pipeli
 
 ![Architecture](/img/diagrams/architecture.svg)
 
-## Crate Dependency Graph
-
-```
-teckel-model   ──>  teckel-parser        (from teckel-rs)
-                         │
-                         v
-                    teckel-engine          (DAG, executor, Backend trait)
-                    /    |    \
-                   v     v     v
-   teckel-datafusion  teckel-polars  teckel-spark
-                   \     |     /
-                    v    v    v
-                    teckel-api            (high-level entry points)
-                         │
-                    teckel-server         (HTTP + gRPC)
-                         │
-                    teckel-worker         (remote execution worker)
-                         │
-                    teckel-remote         (gRPC client backend)
-```
-
 ## Design Principles
 
 ### 1. Backend Trait for Pluggable Execution

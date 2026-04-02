@@ -71,23 +71,4 @@ curl -X POST http://localhost:8080/api/jobs \
 
 ![Architecture](/img/diagrams/architecture.svg)
 
-```
-                    Pipeline YAML
-                         |
-                    teckel-parser (from teckel-rs)
-                         |
-                    Context<Asset>
-                         |
-                  ┌──────┴──────┐
-                  │ teckel-engine│
-                  │   PipelineDag│
-                  │   Executor   │
-                  └──────┬──────┘
-                         │
-          ┌──────────────┼──────────────┐
-          │              │              │
-   teckel-datafusion  teckel-polars  teckel-spark
-   (local, Arrow)    (local, Polars) (remote, Spark)
-```
-
 The engine builds a DAG from the pipeline assets, computes a wave-parallel schedule, and dispatches each operation to the chosen backend. See [Architecture Overview](./architecture/overview.md) for details.

@@ -9,7 +9,7 @@
 
 /* ─── Light mode ─────────────────────────────────────────────────────────── */
 
-:root {
+:root:root {
   /* Primary — zinc-950 */
   --ifm-color-primary: #09090b;
   --ifm-color-primary-dark: #09090b;
@@ -85,7 +85,7 @@
 
 /* ─── Dark mode ──────────────────────────────────────────────────────────── */
 
-[data-theme='dark'] {
+html[data-theme='dark']:root {
   /* Primary — zinc-50/fafafa */
   --ifm-color-primary: #fafafa;
   --ifm-color-primary-dark: #a1a1aa;

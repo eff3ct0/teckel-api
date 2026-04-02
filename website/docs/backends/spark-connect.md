@@ -12,14 +12,6 @@ The Spark Connect backend is the most fully-featured backend in Teckel. It execu
 
 Spark Connect is a protocol introduced in Apache Spark 3.4 that decouples the Spark client from the Spark cluster. Instead of running within the JVM, clients communicate with a Spark Connect server via gRPC, sending logical plans and receiving results via Arrow Flight.
 
-```
-┌─────────────────┐       gRPC        ┌──────────────────────────┐
-│  teckel-spark   │  ─────────────>   │  Spark Connect Server    │
-│  (Rust client)  │  <─────────────   │  (JVM, on Spark cluster) │
-│                 │   Arrow Flight    │                          │
-└─────────────────┘                   └──────────────────────────┘
-```
-
 This architecture means Teckel can submit pipelines to Spark without any JVM dependency -- the entire client is pure Rust.
 
 ## The Rust Implementation
@@ -33,14 +25,6 @@ Teckel uses [spark-connect-rs](https://github.com/rafafrdz/spark-connect-rust), 
 - Temp view management via `df.create_or_replace_temp_view(name)`
 
 ## Architecture
-
-```
-teckel-spark
-├── backend.rs       SparkConnectBackend implements Backend<DataFrame = spark_connect_rs::DataFrame>
-├── reader.rs        CSV / Parquet / JSON input via Spark
-├── writer.rs        Output via Spark's write API
-└── transforms.rs    All 45 transforms (most comprehensive backend)
-```
 
 ### SparkConnectBackend
 

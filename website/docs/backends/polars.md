@@ -10,14 +10,6 @@ The Polars backend executes Teckel pipelines using [Polars](https://pola.rs/), a
 
 ## Architecture
 
-```
-teckel-polars
-├── backend.rs       PolarsBackend implements Backend<DataFrame = polars::DataFrame>
-├── reader.rs        CSV / Parquet / JSON input handling
-├── writer.rs        Output with write mode support
-└── transforms.rs    All transform implementations
-```
-
 ### PolarsBackend
 
 The `PolarsBackend` implements the `Backend` trait with `DataFrame = polars::DataFrame`. Unlike DataFusion which uses lazy logical plans by default, Polars uses eager DataFrames as the caching type -- but individual transforms leverage lazy evaluation internally via `.lazy()` / `.collect()`.

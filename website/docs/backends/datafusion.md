@@ -10,15 +10,6 @@ The DataFusion backend executes Teckel pipelines locally using [Apache DataFusio
 
 ## Architecture
 
-```
-teckel-datafusion
-├── backend.rs       DataFusionBackend implements Backend<DataFrame = datafusion::DataFrame>
-├── reader.rs        CSV / Parquet / JSON input handling
-├── writer.rs        Output with write mode support
-├── transforms.rs    All 45 transform implementations
-└── type_mapping.rs  TeckelDataType <-> arrow::DataType conversion
-```
-
 ### DataFusionBackend
 
 The `DataFusionBackend` wraps a DataFusion `SessionContext` and implements the `Backend` trait with `DataFrame = datafusion::DataFrame`. The SessionContext provides SQL execution, function registry, and table registration.
