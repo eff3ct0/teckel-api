@@ -6,6 +6,8 @@ sidebar_position: 2
 
 The execution engine converts a flat asset context into a directed acyclic graph (DAG), computes an optimal parallel schedule, and executes it using Tokio tasks.
 
+![DAG Executor](/img/diagrams/dag-executor.svg)
+
 ## PipelineDag
 
 The `PipelineDag` struct in `teckel-engine/src/dag.rs` wraps a petgraph `DiGraph<String, ()>` where:

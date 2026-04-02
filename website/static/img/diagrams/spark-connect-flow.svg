@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 320" fill="none">
+  <style>
+    text { font-family: 'Inter', 'Geist', system-ui, sans-serif; }
+    .title { font-size: 13px; fill: #09090b; font-weight: 600; }
+    .label { font-size: 11px; fill: #71717a; font-weight: 500; }
+    .mono { font-family: 'Geist Mono', 'JetBrains Mono', monospace; font-size: 10px; fill: #52525b; }
+    .sub { font-family: 'Geist Mono', 'JetBrains Mono', monospace; font-size: 9px; fill: #a1a1aa; }
+    .zone-label { font-size: 10px; fill: #a1a1aa; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+    .box { stroke: #e4e4e7; stroke-width: 1; rx: 8; fill: white; }
+    .box-accent { stroke: #d4d4d8; stroke-width: 1; rx: 6; fill: #fafafa; }
+    .zone { stroke: #e4e4e7; stroke-width: 1; stroke-dasharray: 4 3; rx: 10; fill: none; }
+    .arrow { stroke: #a1a1aa; stroke-width: 1.2; marker-end: url(#sa); }
+    .arrow-bi { stroke: #a1a1aa; stroke-width: 1.2; }
+    @media (prefers-color-scheme: dark) {
+      .title { fill: #fafafa; } .label { fill: #a1a1aa; } .mono { fill: #a1a1aa; } .sub { fill: #52525b; }
+      .zone-label { fill: #52525b; }
+      .box { stroke: #27272a; fill: #18181b; } .box-accent { stroke: #3f3f46; fill: #27272a; }
+      .zone { stroke: #27272a; } .arrow { stroke: #52525b; } .arrow-bi { stroke: #52525b; }
+    }
+  </style>
+  <defs>
+    <marker id="sa" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="none" stroke="#a1a1aa" stroke-width="1"/></marker>
+    <marker id="sal" markerWidth="8" markerHeight="6" refX="1" refY="3" orient="auto"><path d="M8,0 L0,3 L8,6" fill="none" stroke="#a1a1aa" stroke-width="1"/></marker>
+  </defs>
+
+  <!-- Zone 1: Rust Client -->
+  <rect x="15" y="15" width="250" height="290" class="zone"/>
+  <text x="140" y="35" text-anchor="middle" class="zone-label">Rust Client</text>
+
+  <rect x="35" y="50" width="210" height="36" class="box"/>
+  <text x="140" y="64" text-anchor="middle" class="title">SparkBackend</text>
+  <text x="140" y="78" text-anchor="middle" class="sub">SparkConnectBackend</text>
+
+  <line x1="140" y1="86" x2="140" y2="106" class="arrow"/>
+
+  <rect x="35" y="106" width="210" height="36" class="box-accent"/>
+  <text x="140" y="120" text-anchor="middle" class="mono">transform &#8594; SQL</text>
+  <text x="140" y="134" text-anchor="middle" class="sub">session.sql(&amp;query)</text>
+
+  <line x1="140" y1="142" x2="140" y2="162" class="arrow"/>
+
+  <rect x="35" y="162" width="210" height="36" class="box-accent"/>
+  <text x="140" y="176" text-anchor="middle" class="mono">spark-connect-rs</text>
+  <text x="140" y="190" text-anchor="middle" class="sub">Rust Spark Connect client</text>
+
+  <line x1="140" y1="198" x2="140" y2="218" class="arrow"/>
+
+  <rect x="35" y="218" width="210" height="50" class="box-accent"/>
+  <text x="140" y="236" text-anchor="middle" class="mono">gRPC channel</text>
+  <text x="140" y="250" text-anchor="middle" class="sub">plans &#8594; | &#8592; Arrow Flight</text>
+  <text x="140" y="262" text-anchor="middle" class="sub">protobuf serialization</text>
+
+  <!-- Connection lines between zones -->
+  <line x1="245" y1="243" x2="300" y2="243" class="arrow"/>
+  <line x1="300" y1="243" x2="245" y2="243" marker-end="url(#sal)" class="arrow-bi"/>
+  <text x="272" y="233" text-anchor="middle" class="sub">gRPC</text>
+
+  <!-- Zone 2: Spark Connect Server -->
+  <rect x="300" y="15" width="250" height="290" class="zone"/>
+  <text x="425" y="35" text-anchor="middle" class="zone-label">Spark Connect Server</text>
+
+  <rect x="320" y="55" width="210" height="36" class="box"/>
+  <text x="425" y="69" text-anchor="middle" class="title">Session Manager</text>
+  <text x="425" y="83" text-anchor="middle" class="sub">per-client isolation</text>
+
+  <line x1="425" y1="91" x2="425" y2="111" class="arrow"/>
+
+  <rect x="320" y="111" width="210" height="36" class="box-accent"/>
+  <text x="425" y="125" text-anchor="middle" class="mono">Plan Analyzer</text>
+  <text x="425" y="139" text-anchor="middle" class="sub">resolve references + types</text>
+
+  <line x1="425" y1="147" x2="425" y2="167" class="arrow"/>
+
+  <rect x="320" y="167" width="210" height="36" class="box-accent"/>
+  <text x="425" y="181" text-anchor="middle" class="mono">Optimizer</text>
+  <text x="425" y="195" text-anchor="middle" class="sub">Catalyst logical + physical</text>
+
+  <line x1="425" y1="203" x2="425" y2="223" class="arrow"/>
+
+  <rect x="320" y="223" width="210" height="36" class="box-accent"/>
+  <text x="425" y="237" text-anchor="middle" class="mono">Executor</text>
+  <text x="425" y="251" text-anchor="middle" class="sub">distribute to cluster</text>
+
+  <!-- Connection to cluster -->
+  <line x1="530" y1="241" x2="590" y2="241" class="arrow"/>
+
+  <!-- Zone 3: Spark Cluster -->
+  <rect x="590" y="15" width="250" height="290" class="zone"/>
+  <text x="715" y="35" text-anchor="middle" class="zone-label">Spark Cluster</text>
+
+  <rect x="610" y="65" width="210" height="36" class="box"/>
+  <text x="715" y="79" text-anchor="middle" class="title">Driver</text>
+  <text x="715" y="93" text-anchor="middle" class="sub">task scheduling</text>
+
+  <line x1="715" y1="101" x2="715" y2="131" class="arrow"/>
+
+  <!-- Workers -->
+  <rect x="610" y="131" width="100" height="44" class="box-accent"/>
+  <text x="660" y="149" text-anchor="middle" class="mono">Worker 1</text>
+  <text x="660" y="165" text-anchor="middle" class="sub">executors</text>
+
+  <rect x="720" y="131" width="100" height="44" class="box-accent"/>
+  <text x="770" y="149" text-anchor="middle" class="mono">Worker 2</text>
+  <text x="770" y="165" text-anchor="middle" class="sub">executors</text>
+
+  <rect x="610" y="195" width="100" height="44" class="box-accent"/>
+  <text x="660" y="213" text-anchor="middle" class="mono">Worker N</text>
+  <text x="660" y="229" text-anchor="middle" class="sub">executors</text>
+
+  <!-- Storage -->
+  <rect x="720" y="195" width="100" height="44" class="box"/>
+  <text x="770" y="213" text-anchor="middle" class="title">Storage</text>
+  <text x="770" y="229" text-anchor="middle" class="sub">HDFS / S3 / GCS</text>
+</svg>

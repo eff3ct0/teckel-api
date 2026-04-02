@@ -6,6 +6,8 @@ sidebar_position: 3
 
 The Polars backend executes Teckel pipelines using [Polars](https://pola.rs/), a high-performance DataFrame library written in Rust with a focus on lazy evaluation and memory efficiency.
 
+![Polars flow](/img/diagrams/polars-flow.svg)
+
 ## Architecture
 
 ```

@@ -6,6 +6,8 @@ sidebar_position: 3
 
 The Teckel server manages pipeline executions as asynchronous jobs. This page describes the job lifecycle, the in-memory store, and the worker pool architecture.
 
+![Job lifecycle](/img/diagrams/job-lifecycle.svg)
+
 ## Job Lifecycle
 
 ```

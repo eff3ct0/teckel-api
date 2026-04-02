@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 740 320" fill="none">
+  <style>
+    text { font-family: 'Inter', 'Geist', system-ui, sans-serif; }
+    .title { font-size: 13px; fill: #09090b; font-weight: 600; }
+    .label { font-size: 11px; fill: #71717a; font-weight: 500; }
+    .mono { font-family: 'Geist Mono', 'JetBrains Mono', monospace; font-size: 10px; fill: #52525b; }
+    .sub { font-family: 'Geist Mono', 'JetBrains Mono', monospace; font-size: 9px; fill: #a1a1aa; }
+    .box { stroke: #e4e4e7; stroke-width: 1; rx: 8; fill: white; }
+    .box-accent { stroke: #d4d4d8; stroke-width: 1; rx: 6; fill: #fafafa; }
+    .arrow-dash { stroke: #a1a1aa; stroke-width: 1.2; stroke-dasharray: 5 3; marker-end: url(#ba); }
+    .arrow { stroke: #a1a1aa; stroke-width: 1.2; marker-end: url(#ba); }
+    .divider { stroke: #e4e4e7; stroke-width: 0.5; }
+    @media (prefers-color-scheme: dark) {
+      .title { fill: #fafafa; } .label { fill: #a1a1aa; } .mono { fill: #a1a1aa; } .sub { fill: #52525b; }
+      .box { stroke: #27272a; fill: #18181b; } .box-accent { stroke: #3f3f46; fill: #27272a; }
+      .arrow-dash { stroke: #52525b; } .arrow { stroke: #52525b; } .divider { stroke: #27272a; }
+    }
+  </style>
+  <defs>
+    <marker id="ba" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="none" stroke="#a1a1aa" stroke-width="1"/></marker>
+  </defs>
+
+  <!-- Trait box -->
+  <rect x="240" y="20" width="260" height="130" class="box"/>
+  <text x="370" y="42" text-anchor="middle" class="title">Backend&lt;DataFrame&gt;</text>
+  <line x1="250" y1="50" x2="490" y2="50" class="divider"/>
+
+  <text x="260" y="70" class="mono">type DataFrame: Clone + Send + Sync</text>
+  <line x1="250" y1="78" x2="490" y2="78" class="divider"/>
+
+  <text x="260" y="96" class="mono">fn read_input(&amp;self, input) -&gt; DataFrame</text>
+  <text x="260" y="112" class="mono">fn apply(&amp;self, source, inputs) -&gt; DataFrame</text>
+  <text x="260" y="128" class="mono">fn write_output(&amp;self, df, output) -&gt; ()</text>
+
+  <!-- Dashed arrows to implementations -->
+  <line x1="290" y1="150" x2="130" y2="220" class="arrow-dash"/>
+  <line x1="370" y1="150" x2="370" y2="220" class="arrow-dash"/>
+  <line x1="450" y1="150" x2="610" y2="220" class="arrow-dash"/>
+
+  <!-- "implements" labels -->
+  <text x="195" y="185" text-anchor="middle" class="sub">implements</text>
+  <text x="380" y="185" text-anchor="start" class="sub">implements</text>
+  <text x="540" y="185" text-anchor="middle" class="sub">implements</text>
+
+  <!-- DataFusion impl -->
+  <rect x="30" y="220" width="200" height="80" class="box-accent"/>
+  <text x="130" y="242" text-anchor="middle" class="title">DataFusionBackend</text>
+  <line x1="40" y1="249" x2="220" y2="249" class="divider"/>
+  <text x="130" y="266" text-anchor="middle" class="mono">datafusion::DataFrame</text>
+  <text x="130" y="282" text-anchor="middle" class="sub">Arrow-native, in-process</text>
+
+  <!-- Polars impl -->
+  <rect x="270" y="220" width="200" height="80" class="box-accent"/>
+  <text x="370" y="242" text-anchor="middle" class="title">PolarsBackend</text>
+  <line x1="280" y1="249" x2="460" y2="249" class="divider"/>
+  <text x="370" y="266" text-anchor="middle" class="mono">polars::DataFrame</text>
+  <text x="370" y="282" text-anchor="middle" class="sub">lazy evaluation, in-process</text>
+
+  <!-- Spark impl -->
+  <rect x="510" y="220" width="200" height="80" class="box-accent"/>
+  <text x="610" y="242" text-anchor="middle" class="title">SparkBackend</text>
+  <line x1="520" y1="249" x2="700" y2="249" class="divider"/>
+  <text x="610" y="266" text-anchor="middle" class="mono">spark::DataFrame</text>
+  <text x="610" y="282" text-anchor="middle" class="sub">remote, distributed</text>
+</svg>

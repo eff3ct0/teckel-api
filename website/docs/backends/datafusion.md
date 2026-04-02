@@ -6,6 +6,8 @@ sidebar_position: 2
 
 The DataFusion backend executes Teckel pipelines locally using [Apache DataFusion](https://datafusion.apache.org/), an extensible query engine written in Rust that uses Apache Arrow as its in-memory format.
 
+![DataFusion flow](/img/diagrams/datafusion-flow.svg)
+
 ## Architecture
 
 ```

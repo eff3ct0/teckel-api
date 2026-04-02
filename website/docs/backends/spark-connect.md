@@ -6,6 +6,8 @@ sidebar_position: 4
 
 The Spark Connect backend is the most fully-featured backend in Teckel. It executes pipelines on a remote Apache Spark cluster via the [Spark Connect protocol](https://spark.apache.org/docs/latest/spark-connect-overview.html), enabling distributed processing of large-scale datasets.
 
+![Spark Connect flow](/img/diagrams/spark-connect-flow.svg)
+
 ## What is Spark Connect?
 
 Spark Connect is a protocol introduced in Apache Spark 3.4 that decouples the Spark client from the Spark cluster. Instead of running within the JVM, clients communicate with a Spark Connect server via gRPC, sending logical plans and receiving results via Arrow Flight.

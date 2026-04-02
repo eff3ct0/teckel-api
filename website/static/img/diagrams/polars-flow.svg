@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 220" fill="none">
+  <style>
+    text { font-family: 'Inter', 'Geist', system-ui, sans-serif; }
+    .title { font-size: 13px; fill: #09090b; font-weight: 600; }
+    .label { font-size: 11px; fill: #71717a; font-weight: 500; }
+    .mono { font-family: 'Geist Mono', 'JetBrains Mono', monospace; font-size: 10px; fill: #52525b; }
+    .sub { font-family: 'Geist Mono', 'JetBrains Mono', monospace; font-size: 9px; fill: #a1a1aa; }
+    .box { stroke: #e4e4e7; stroke-width: 1; rx: 8; fill: white; }
+    .box-accent { stroke: #d4d4d8; stroke-width: 1; rx: 6; fill: #fafafa; }
+    .arrow { stroke: #a1a1aa; stroke-width: 1.2; marker-end: url(#pa); }
+    @media (prefers-color-scheme: dark) {
+      .title { fill: #fafafa; } .label { fill: #a1a1aa; } .mono { fill: #a1a1aa; } .sub { fill: #52525b; }
+      .box { stroke: #27272a; fill: #18181b; } .box-accent { stroke: #3f3f46; fill: #27272a; }
+      .arrow { stroke: #52525b; }
+    }
+  </style>
+  <defs>
+    <marker id="pa" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="none" stroke="#a1a1aa" stroke-width="1"/></marker>
+  </defs>
+
+  <!-- Title -->
+  <text x="390" y="22" text-anchor="middle" class="title">Polars Backend Flow</text>
+
+  <!-- Input -->
+  <rect x="20" y="55" width="110" height="80" class="box"/>
+  <text x="75" y="77" text-anchor="middle" class="title">Input</text>
+  <text x="75" y="95" text-anchor="middle" class="mono">CSV</text>
+  <text x="75" y="109" text-anchor="middle" class="mono">Parquet</text>
+  <text x="75" y="123" text-anchor="middle" class="mono">JSON</text>
+
+  <!-- Arrow -->
+  <line x1="130" y1="95" x2="170" y2="95" class="arrow"/>
+
+  <!-- Lazy Reader -->
+  <rect x="170" y="55" width="130" height="80" class="box-accent"/>
+  <text x="235" y="77" text-anchor="middle" class="title">Lazy Reader</text>
+  <text x="235" y="95" text-anchor="middle" class="mono">scan_csv()</text>
+  <text x="235" y="109" text-anchor="middle" class="mono">scan_parquet()</text>
+  <text x="235" y="123" text-anchor="middle" class="sub">&#8594; LazyFrame</text>
+
+  <!-- Arrow -->
+  <line x1="300" y1="95" x2="340" y2="95" class="arrow"/>
+
+  <!-- SQLContext -->
+  <rect x="340" y="55" width="130" height="80" class="box-accent"/>
+  <text x="405" y="77" text-anchor="middle" class="title">SQLContext</text>
+  <text x="405" y="95" text-anchor="middle" class="mono">register(name, lf)</text>
+  <text x="405" y="109" text-anchor="middle" class="mono">execute(&amp;query)</text>
+  <text x="405" y="123" text-anchor="middle" class="sub">SQL transforms</text>
+
+  <!-- Arrow -->
+  <line x1="470" y1="95" x2="510" y2="95" class="arrow"/>
+
+  <!-- Collect -->
+  <rect x="510" y="55" width="120" height="80" class="box-accent"/>
+  <text x="570" y="77" text-anchor="middle" class="title">Collect</text>
+  <text x="570" y="95" text-anchor="middle" class="mono">.collect()</text>
+  <text x="570" y="109" text-anchor="middle" class="sub">lazy &#8594; eager</text>
+  <text x="570" y="123" text-anchor="middle" class="sub">DataFrame</text>
+
+  <!-- Arrow -->
+  <line x1="630" y1="95" x2="660" y2="95" class="arrow"/>
+
+  <!-- Output -->
+  <rect x="660" y="55" width="100" height="80" class="box"/>
+  <text x="710" y="77" text-anchor="middle" class="title">Output</text>
+  <text x="710" y="95" text-anchor="middle" class="mono">CSV</text>
+  <text x="710" y="109" text-anchor="middle" class="mono">Parquet</text>
+  <text x="710" y="123" text-anchor="middle" class="mono">JSON</text>
+
+  <!-- Bottom label -->
+  <text x="390" y="170" text-anchor="middle" class="label">Lazy evaluation optimizes each transform before collecting</text>
+  <text x="390" y="184" text-anchor="middle" class="sub">df.lazy() &#8594; transform &#8594; .collect() pattern used throughout</text>
+</svg>

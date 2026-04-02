@@ -6,6 +6,8 @@ sidebar_position: 1
 
 Teckel ships with four backends, each suited for different deployment scenarios. All implement the same `Backend` trait, so the same pipeline YAML runs on any of them.
 
+![Architecture](/img/diagrams/architecture.svg)
+
 ## Backend Comparison
 
 | Feature | DataFusion | Polars | Spark Connect | Remote |

@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 300" fill="none">
+  <style>
+    text { font-family: 'Inter', 'Geist', system-ui, sans-serif; }
+    .title { font-size: 13px; fill: #09090b; font-weight: 600; }
+    .label { font-size: 11px; fill: #71717a; font-weight: 500; }
+    .mono { font-family: 'Geist Mono', 'JetBrains Mono', monospace; font-size: 10px; fill: #52525b; }
+    .wave-label { font-size: 10px; fill: #a1a1aa; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+    .box { stroke: #e4e4e7; stroke-width: 1; rx: 8; fill: white; }
+    .box-accent { stroke: #d4d4d8; stroke-width: 1; rx: 6; fill: #fafafa; }
+    .zone { stroke: #e4e4e7; stroke-width: 1; stroke-dasharray: 4 3; rx: 10; fill: none; }
+    .arrow { stroke: #a1a1aa; stroke-width: 1.2; marker-end: url(#da); }
+    .par { font-family: 'Geist Mono', monospace; font-size: 9px; fill: #a1a1aa; }
+    @media (prefers-color-scheme: dark) {
+      .title { fill: #fafafa; } .label { fill: #a1a1aa; } .mono { fill: #a1a1aa; } .wave-label { fill: #52525b; }
+      .box { stroke: #27272a; fill: #18181b; } .box-accent { stroke: #3f3f46; fill: #27272a; }
+      .zone { stroke: #27272a; } .arrow { stroke: #52525b; } .par { fill: #52525b; }
+    }
+  </style>
+  <defs>
+    <marker id="da" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="none" stroke="#a1a1aa" stroke-width="1"/></marker>
+  </defs>
+
+  <!-- Title -->
+  <text x="380" y="22" text-anchor="middle" class="title">Wave-Parallel Execution</text>
+  <text x="380" y="36" text-anchor="middle" class="par">independent nodes run concurrently via tokio::spawn</text>
+
+  <!-- Wave 0 -->
+  <rect x="20" y="52" width="150" height="230" class="zone"/>
+  <text x="95" y="70" text-anchor="middle" class="wave-label">Wave 0</text>
+  <text x="95" y="82" text-anchor="middle" class="par">inputs</text>
+
+  <rect x="40" y="96" width="110" height="34" class="box"/>
+  <text x="95" y="110" text-anchor="middle" class="mono">raw_customers</text>
+  <text x="95" y="122" text-anchor="middle" class="par">input</text>
+
+  <rect x="40" y="150" width="110" height="34" class="box"/>
+  <text x="95" y="164" text-anchor="middle" class="mono">raw_orders</text>
+  <text x="95" y="176" text-anchor="middle" class="par">input</text>
+
+  <rect x="40" y="204" width="110" height="34" class="box"/>
+  <text x="95" y="218" text-anchor="middle" class="mono">raw_products</text>
+  <text x="95" y="230" text-anchor="middle" class="par">input</text>
+
+  <!-- Wave 1 -->
+  <rect x="210" y="52" width="150" height="230" class="zone"/>
+  <text x="285" y="70" text-anchor="middle" class="wave-label">Wave 1</text>
+  <text x="285" y="82" text-anchor="middle" class="par">transforms (parallel)</text>
+
+  <rect x="230" y="96" width="110" height="34" class="box-accent"/>
+  <text x="285" y="110" text-anchor="middle" class="mono">clean_customers</text>
+  <text x="285" y="122" text-anchor="middle" class="par">where + cast</text>
+
+  <rect x="230" y="150" width="110" height="34" class="box-accent"/>
+  <text x="285" y="164" text-anchor="middle" class="mono">clean_orders</text>
+  <text x="285" y="176" text-anchor="middle" class="par">where + addCols</text>
+
+  <rect x="230" y="204" width="110" height="34" class="box-accent"/>
+  <text x="285" y="218" text-anchor="middle" class="mono">clean_products</text>
+  <text x="285" y="230" text-anchor="middle" class="par">select + cast</text>
+
+  <!-- Wave 2 -->
+  <rect x="400" y="52" width="150" height="230" class="zone"/>
+  <text x="475" y="70" text-anchor="middle" class="wave-label">Wave 2</text>
+  <text x="475" y="82" text-anchor="middle" class="par">transforms (parallel)</text>
+
+  <rect x="420" y="120" width="110" height="34" class="box-accent"/>
+  <text x="475" y="134" text-anchor="middle" class="mono">order_details</text>
+  <text x="475" y="146" text-anchor="middle" class="par">join</text>
+
+  <rect x="420" y="196" width="110" height="34" class="box-accent"/>
+  <text x="475" y="210" text-anchor="middle" class="mono">customer_agg</text>
+  <text x="475" y="222" text-anchor="middle" class="par">groupBy</text>
+
+  <!-- Wave 3 -->
+  <rect x="590" y="52" width="150" height="230" class="zone"/>
+  <text x="665" y="70" text-anchor="middle" class="wave-label">Wave 3</text>
+  <text x="665" y="82" text-anchor="middle" class="par">output</text>
+
+  <rect x="610" y="152" width="110" height="34" class="box"/>
+  <text x="665" y="166" text-anchor="middle" class="mono">final_report</text>
+  <text x="665" y="178" text-anchor="middle" class="par">output (parquet)</text>
+
+  <!-- Arrows: Wave 0 -> Wave 1 -->
+  <line x1="150" y1="113" x2="230" y2="113" class="arrow"/>
+  <line x1="150" y1="167" x2="230" y2="167" class="arrow"/>
+  <line x1="150" y1="221" x2="230" y2="221" class="arrow"/>
+
+  <!-- Arrows: Wave 1 -> Wave 2 -->
+  <line x1="340" y1="113" x2="420" y2="131" class="arrow"/>
+  <line x1="340" y1="167" x2="420" y2="143" class="arrow"/>
+  <line x1="340" y1="167" x2="420" y2="210" class="arrow"/>
+  <line x1="340" y1="113" x2="420" y2="210" class="arrow"/>
+
+  <!-- Arrows: Wave 2 -> Wave 3 -->
+  <line x1="530" y1="137" x2="610" y2="163" class="arrow"/>
+  <line x1="530" y1="213" x2="610" y2="175" class="arrow"/>
+</svg>

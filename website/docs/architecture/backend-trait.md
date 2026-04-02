@@ -6,6 +6,8 @@ sidebar_position: 3
 
 The `Backend` trait is the central abstraction that makes Teckel's execution engine pluggable. Every execution backend -- DataFusion, Polars, Spark Connect, or a custom implementation -- implements this trait.
 
+![Backend trait](/img/diagrams/backend-trait.svg)
+
 ## Definition
 
 ```rust

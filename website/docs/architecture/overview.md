@@ -6,6 +6,8 @@ sidebar_position: 1
 
 The Teckel Engine is organized into a layered architecture that separates pipeline orchestration from execution. This design enables pluggable backends: the same pipeline definition can run on DataFusion locally or on a Spark cluster remotely.
 
+![Architecture](/img/diagrams/architecture.svg)
+
 ## Crate Dependency Graph
 
 ```

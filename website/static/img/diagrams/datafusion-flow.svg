@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 240" fill="none">
+  <style>
+    text { font-family: 'Inter', 'Geist', system-ui, sans-serif; }
+    .title { font-size: 13px; fill: #09090b; font-weight: 600; }
+    .label { font-size: 11px; fill: #71717a; font-weight: 500; }
+    .mono { font-family: 'Geist Mono', 'JetBrains Mono', monospace; font-size: 10px; fill: #52525b; }
+    .sub { font-family: 'Geist Mono', 'JetBrains Mono', monospace; font-size: 9px; fill: #a1a1aa; }
+    .box { stroke: #e4e4e7; stroke-width: 1; rx: 8; fill: white; }
+    .box-accent { stroke: #d4d4d8; stroke-width: 1; rx: 6; fill: #fafafa; }
+    .arrow { stroke: #a1a1aa; stroke-width: 1.2; marker-end: url(#dfa); }
+    @media (prefers-color-scheme: dark) {
+      .title { fill: #fafafa; } .label { fill: #a1a1aa; } .mono { fill: #a1a1aa; } .sub { fill: #52525b; }
+      .box { stroke: #27272a; fill: #18181b; } .box-accent { stroke: #3f3f46; fill: #27272a; }
+      .arrow { stroke: #52525b; }
+    }
+  </style>
+  <defs>
+    <marker id="dfa" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="none" stroke="#a1a1aa" stroke-width="1"/></marker>
+  </defs>
+
+  <!-- Title -->
+  <text x="400" y="22" text-anchor="middle" class="title">DataFusion Backend Flow</text>
+
+  <!-- Input -->
+  <rect x="20" y="60" width="120" height="80" class="box"/>
+  <text x="80" y="82" text-anchor="middle" class="title">Input</text>
+  <text x="80" y="98" text-anchor="middle" class="mono">CSV</text>
+  <text x="80" y="112" text-anchor="middle" class="mono">Parquet</text>
+  <text x="80" y="126" text-anchor="middle" class="mono">JSON</text>
+
+  <!-- Arrow -->
+  <line x1="140" y1="100" x2="180" y2="100" class="arrow"/>
+
+  <!-- Reader -->
+  <rect x="180" y="60" width="130" height="80" class="box-accent"/>
+  <text x="245" y="82" text-anchor="middle" class="title">Reader</text>
+  <text x="245" y="98" text-anchor="middle" class="mono">SessionContext</text>
+  <text x="245" y="112" text-anchor="middle" class="sub">read_csv / read_parquet</text>
+  <text x="245" y="126" text-anchor="middle" class="sub">Arrow RecordBatch</text>
+
+  <!-- Arrow -->
+  <line x1="310" y1="100" x2="350" y2="100" class="arrow"/>
+
+  <!-- Transforms -->
+  <rect x="350" y="48" width="140" height="104" class="box-accent"/>
+  <text x="420" y="70" text-anchor="middle" class="title">Transforms</text>
+  <text x="420" y="88" text-anchor="middle" class="mono">SQL expression</text>
+  <text x="420" y="102" text-anchor="middle" class="sub">ctx.sql(&amp;query)</text>
+  <text x="420" y="118" text-anchor="middle" class="mono">DataFrame API</text>
+  <text x="420" y="132" text-anchor="middle" class="sub">df.select() / df.filter()</text>
+  <text x="420" y="144" text-anchor="middle" class="sub">df.aggregate() / df.join()</text>
+
+  <!-- Arrow -->
+  <line x1="490" y1="100" x2="530" y2="100" class="arrow"/>
+
+  <!-- Type Map -->
+  <rect x="530" y="60" width="120" height="80" class="box-accent"/>
+  <text x="590" y="82" text-anchor="middle" class="title">Type Map</text>
+  <text x="590" y="100" text-anchor="middle" class="mono">TeckelDataType</text>
+  <text x="590" y="112" text-anchor="middle" class="sub">&#8596;</text>
+  <text x="590" y="124" text-anchor="middle" class="mono">arrow::DataType</text>
+
+  <!-- Arrow -->
+  <line x1="650" y1="100" x2="690" y2="100" class="arrow"/>
+
+  <!-- Writer -->
+  <rect x="690" y="60" width="100" height="80" class="box"/>
+  <text x="740" y="82" text-anchor="middle" class="title">Writer</text>
+  <text x="740" y="100" text-anchor="middle" class="mono">write modes</text>
+  <text x="740" y="114" text-anchor="middle" class="sub">error | overwrite</text>
+  <text x="740" y="126" text-anchor="middle" class="sub">append | ignore</text>
+
+  <!-- Format labels at bottom -->
+  <text x="400" y="186" text-anchor="middle" class="label">All operations use Arrow columnar format in-memory</text>
+  <text x="400" y="200" text-anchor="middle" class="sub">datafusion::DataFrame wraps a LogicalPlan over Arrow RecordBatches</text>
+</svg>

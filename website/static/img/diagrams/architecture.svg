@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 380" fill="none">
+  <style>
+    text { font-family: 'Inter', 'Geist', system-ui, sans-serif; }
+    .title { font-size: 13px; fill: #09090b; font-weight: 600; }
+    .label { font-size: 11px; fill: #71717a; font-weight: 500; }
+    .mono { font-family: 'Geist Mono', 'JetBrains Mono', monospace; font-size: 10px; fill: #52525b; }
+    .sub { font-family: 'Geist Mono', 'JetBrains Mono', monospace; font-size: 9px; fill: #a1a1aa; }
+    .box { stroke: #e4e4e7; stroke-width: 1; rx: 8; fill: white; }
+    .box-accent { stroke: #d4d4d8; stroke-width: 1; rx: 6; fill: #fafafa; }
+    .arrow { stroke: #a1a1aa; stroke-width: 1.2; marker-end: url(#aa); }
+    @media (prefers-color-scheme: dark) {
+      .title { fill: #fafafa; } .label { fill: #a1a1aa; } .mono { fill: #a1a1aa; } .sub { fill: #52525b; }
+      .box { stroke: #27272a; fill: #18181b; } .box-accent { stroke: #3f3f46; fill: #27272a; }
+      .arrow { stroke: #52525b; }
+    }
+  </style>
+  <defs>
+    <marker id="aa" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="none" stroke="#a1a1aa" stroke-width="1"/></marker>
+  </defs>
+
+  <!-- Pipeline YAML -->
+  <rect x="310" y="20" width="160" height="44" class="box-accent"/>
+  <text x="390" y="38" text-anchor="middle" class="title">Pipeline YAML</text>
+  <text x="390" y="52" text-anchor="middle" class="sub">.yaml definition</text>
+
+  <!-- Arrow down to parser -->
+  <line x1="390" y1="64" x2="390" y2="94" class="arrow"/>
+
+  <!-- teckel-parser -->
+  <rect x="310" y="94" width="160" height="44" class="box"/>
+  <text x="390" y="112" text-anchor="middle" class="title">teckel-parser</text>
+  <text x="390" y="126" text-anchor="middle" class="sub">from teckel-rs</text>
+
+  <!-- Arrow down to engine -->
+  <line x1="390" y1="138" x2="390" y2="168" class="arrow"/>
+
+  <!-- teckel-engine group box -->
+  <rect x="250" y="168" width="280" height="90" rx="10" stroke="#e4e4e7" stroke-width="1" fill="none"/>
+  <text x="390" y="188" text-anchor="middle" class="title">teckel-engine</text>
+
+  <!-- Sub-modules inside engine -->
+  <rect x="266" y="198" width="120" height="28" class="box-accent"/>
+  <text x="326" y="216" text-anchor="middle" class="mono">DAG Executor</text>
+
+  <rect x="396" y="198" width="120" height="28" class="box-accent"/>
+  <text x="456" y="216" text-anchor="middle" class="mono">Backend trait</text>
+
+  <!-- Arrow down from engine to backends -->
+  <line x1="310" y1="258" x2="160" y2="300" class="arrow"/>
+  <line x1="390" y1="258" x2="390" y2="300" class="arrow"/>
+  <line x1="470" y1="258" x2="620" y2="300" class="arrow"/>
+
+  <!-- DataFusion backend -->
+  <rect x="70" y="300" width="180" height="56" class="box"/>
+  <text x="160" y="320" text-anchor="middle" class="title">teckel-datafusion</text>
+  <text x="160" y="336" text-anchor="middle" class="mono">datafusion::DataFrame</text>
+  <text x="160" y="348" text-anchor="middle" class="sub">local, Arrow-native</text>
+
+  <!-- Polars backend -->
+  <rect x="300" y="300" width="180" height="56" class="box"/>
+  <text x="390" y="320" text-anchor="middle" class="title">teckel-polars</text>
+  <text x="390" y="336" text-anchor="middle" class="mono">polars::DataFrame</text>
+  <text x="390" y="348" text-anchor="middle" class="sub">local, lazy evaluation</text>
+
+  <!-- Spark backend -->
+  <rect x="530" y="300" width="180" height="56" class="box"/>
+  <text x="620" y="320" text-anchor="middle" class="title">teckel-spark</text>
+  <text x="620" y="336" text-anchor="middle" class="mono">spark::DataFrame</text>
+  <text x="620" y="348" text-anchor="middle" class="sub">remote, distributed</text>
+</svg>
