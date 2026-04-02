@@ -1,0 +1,19 @@
+name: Trigger Docs Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'website/**'
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger teckel-spec docs deploy
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.DOCS_DEPLOY_TOKEN }}
+          repository: eff3ct0/teckel-spec
+          event-type: docs-updated
+          client-payload: '{"repo": "${{ github.repository }}", "sha": "${{ github.sha }}"}'
