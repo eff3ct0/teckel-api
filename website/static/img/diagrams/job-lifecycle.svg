@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 220" fill="none">
+  <style>
+    text { font-family: 'Inter', 'Geist', system-ui, sans-serif; }
+    .title { font-size: 13px; fill: #09090b; font-weight: 600; }
+    .label { font-size: 10px; fill: #71717a; font-weight: 500; }
+    .mono { font-family: 'Geist Mono', 'JetBrains Mono', monospace; font-size: 10px; fill: #52525b; }
+    .state { font-family: 'Geist Mono', monospace; font-size: 12px; fill: #09090b; font-weight: 600; }
+    .ok { fill: #15803d; } .err { fill: #b91c1c; } .warn { fill: #b45309; }
+    .node { stroke: #e4e4e7; stroke-width: 1.5; rx: 20; fill: white; }
+    .node-ok { stroke: #bbf7d0; stroke-width: 1.5; rx: 20; fill: #f0fdf4; }
+    .node-err { stroke: #fecaca; stroke-width: 1.5; rx: 20; fill: #fef2f2; }
+    .node-warn { stroke: #fde68a; stroke-width: 1.5; rx: 20; fill: #fffbeb; }
+    .arrow { stroke: #a1a1aa; stroke-width: 1.5; marker-end: url(#ja); }
+    .arrow-ok { stroke: #15803d; stroke-width: 1.5; marker-end: url(#jok); }
+    .arrow-err { stroke: #b91c1c; stroke-width: 1.5; marker-end: url(#jerr); }
+    .arrow-warn { stroke: #b45309; stroke-width: 1.5; marker-end: url(#jwarn); }
+    @media (prefers-color-scheme: dark) {
+      .title { fill: #fafafa; } .label { fill: #a1a1aa; } .mono { fill: #a1a1aa; }
+      .state { fill: #fafafa; } .ok { fill: #4ade80; } .err { fill: #f87171; } .warn { fill: #fbbf24; }
+      .node { stroke: #27272a; fill: #18181b; }
+      .node-ok { stroke: #166534; fill: #052e16; }
+      .node-err { stroke: #991b1b; fill: #450a0a; }
+      .node-warn { stroke: #92400e; fill: #451a03; }
+      .arrow { stroke: #52525b; }
+    }
+  </style>
+  <defs>
+    <marker id="ja" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="none" stroke="#a1a1aa" stroke-width="1.2"/></marker>
+    <marker id="jok" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="none" stroke="#15803d" stroke-width="1.2"/></marker>
+    <marker id="jerr" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="none" stroke="#b91c1c" stroke-width="1.2"/></marker>
+    <marker id="jwarn" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="none" stroke="#b45309" stroke-width="1.2"/></marker>
+  </defs>
+
+  <!-- SubmitJob -->
+  <text x="40" y="100" text-anchor="middle" class="mono">SubmitJob</text>
+  <line x1="75" y1="95" x2="100" y2="95" class="arrow"/>
+
+  <!-- Queued -->
+  <rect x="100" y="75" width="120" height="40" class="node"/>
+  <text x="160" y="100" text-anchor="middle" class="state">queued</text>
+
+  <!-- Running -->
+  <line x1="220" y1="95" x2="270" y2="95" class="arrow"/>
+  <text x="245" y="85" text-anchor="middle" class="label">worker picks up</text>
+  <rect x="270" y="75" width="120" height="40" class="node"/>
+  <text x="330" y="100" text-anchor="middle" class="state">running</text>
+
+  <!-- Completed -->
+  <line x1="390" y1="82" x2="470" y2="50" class="arrow-ok"/>
+  <text x="440" y="55" text-anchor="middle" class="label">success</text>
+  <rect x="470" y="30" width="130" height="40" class="node-ok"/>
+  <text x="535" y="55" text-anchor="middle" class="state ok">completed</text>
+
+  <!-- Failed -->
+  <line x1="390" y1="108" x2="470" y2="140" class="arrow-err"/>
+  <text x="438" y="138" text-anchor="middle" class="label">error</text>
+  <rect x="470" y="120" width="130" height="40" class="node-err"/>
+  <text x="535" y="145" text-anchor="middle" class="state err">failed</text>
+
+  <!-- Cancelled from queued -->
+  <line x1="160" y1="115" x2="160" y2="170" class="arrow-warn"/>
+  <rect x="95" y="170" width="130" height="40" class="node-warn"/>
+  <text x="160" y="195" text-anchor="middle" class="state warn">cancelled</text>
+  <text x="115" y="145" text-anchor="middle" class="label">CancelJob</text>
+
+  <!-- Cancelled from running -->
+  <line x1="330" y1="115" x2="225" y2="185" class="arrow-warn"/>
+  <text x="300" y="155" text-anchor="middle" class="label">CancelJob</text>
+
+  <!-- Polling -->
+  <path d="M390,95 C420,95 420,65 390,65" fill="none" class="arrow"/>
+  <text x="425" y="80" class="label">GetJob / WaitForJob</text>
+</svg>
