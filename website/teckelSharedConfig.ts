@@ -91,8 +91,10 @@ export function createTeckelConfig(options: TeckelConfigOptions): Config {
     ],
 
     themeConfig: {
+      image: 'img/og-image.png',
       colorMode: {
         defaultMode: 'light',
+        disableSwitch: false,
         respectPrefersColorScheme: true,
       },
       navbar: {
