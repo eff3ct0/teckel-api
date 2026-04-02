@@ -15,6 +15,7 @@ jobs:
   build:
     name: Build & Test (${{ matrix.rust }})
     runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.rust == 'nightly' }}
     strategy:
       fail-fast: false
       matrix:
@@ -31,6 +32,9 @@ jobs:
 
       - name: Symlink teckel-rs to expected path
         run: ln -s "$GITHUB_WORKSPACE/_teckel-rs" "$GITHUB_WORKSPACE/../teckel-rs"
+
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
