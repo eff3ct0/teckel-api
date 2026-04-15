@@ -85,7 +85,7 @@ transformation:
           type: inner
           on: ["employees.department = departments.id"]
   - name: dept_stats
-    groupBy:
+    group:
       from: enriched
       by: [department]
       agg: ["COUNT(*) AS headcount", "AVG(salary) AS avg_salary"]

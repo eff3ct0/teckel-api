@@ -25,32 +25,27 @@ jobs:
             scala_binary: "2.12"
             java_version: "11"
             port: 15002
-            test_data_dir: ${{ github.workspace }}/crates/teckel-spark/testdata
             experimental: false
           - backend: spark
             spark_version: 3.5.3
             scala_binary: "2.12"
             java_version: "17"
             port: 15002
-            test_data_dir: ${{ github.workspace }}/crates/teckel-spark/testdata
             experimental: false
           - backend: spark
             spark_version: 3.5.4
             scala_binary: "2.12"
             java_version: "17"
             port: 15002
-            test_data_dir: ${{ github.workspace }}/crates/teckel-spark/testdata
             experimental: false
           - backend: spark
             spark_version: 4.1.1
             scala_binary: "2.13"
             java_version: "17"
             port: 15002
-            test_data_dir: ${{ github.workspace }}/crates/teckel-spark/testdata
             experimental: true
           - backend: sail
             port: 50051
-            test_data_dir: ${{ github.workspace }}/crates/teckel-spark/testdata
             experimental: true
 
     steps:
@@ -155,9 +150,12 @@ jobs:
       - name: Run integration tests
         env:
           SPARK_CONNECT_URL: "sc://127.0.0.1:${{ matrix.port }}/"
-          TEST_DATA_DIR: ${{ matrix.test_data_dir }}
           RUST_LOG: info
-        run: cargo test -p teckel-spark --features integration -- --nocapture
+        run: |
+          export TEST_DATA_DIR="$GITHUB_WORKSPACE/crates/teckel-spark/testdata"
+          echo "TEST_DATA_DIR=$TEST_DATA_DIR"
+          ls -la "$TEST_DATA_DIR"
+          cargo test -p teckel-spark --features integration -- --nocapture
 
       - name: Collect Spark logs on failure
         if: failure() && matrix.backend == 'spark'
