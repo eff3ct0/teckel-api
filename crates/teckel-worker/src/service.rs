@@ -23,6 +23,7 @@ struct JobState {
     duration_ms: i64,
     yaml: String,
     variables: BTreeMap<String, String>,
+    backend: String,
     cancel: tokio_util::sync::CancellationToken,
 }
 
@@ -142,6 +143,7 @@ impl TeckelService for TeckelWorker {
             duration_ms: -1,
             yaml: req.yaml,
             variables,
+            backend: req.backend,
             cancel: cancel.clone(),
         };
 
@@ -163,9 +165,13 @@ impl TeckelService for TeckelWorker {
                 return;
             }
 
-            let (yaml, variables) = {
+            let (yaml, variables, backend) = {
                 let job = jobs.get(&jid).unwrap();
-                (job.yaml.clone(), job.variables.clone())
+                (
+                    job.yaml.clone(),
+                    job.variables.clone(),
+                    job.backend.clone(),
+                )
             };
 
             // Mark running
@@ -185,7 +191,7 @@ impl TeckelService for TeckelWorker {
                     }
                     return;
                 }
-                result = teckel_api::etl(&yaml, &variables) => result,
+                result = teckel_api::etl_by_name(&yaml, &variables, &backend) => result,
             };
 
             let duration_ms = start.elapsed().as_millis() as i64;
@@ -412,7 +418,14 @@ impl TeckelService for TeckelWorker {
         let start = Instant::now();
         let variables: BTreeMap<String, String> = req.variables.into_iter().collect();
 
-        match teckel_api::etl(&req.yaml, &variables).await {
+        // Use session backend if available, otherwise default.
+        let backend = self
+            .sessions
+            .get(&req.session_id)
+            .map(|s| s.backend.clone())
+            .unwrap_or_default();
+
+        match teckel_api::etl_by_name(&req.yaml, &variables, &backend).await {
             Ok(()) => Ok(Response::new(proto::ExecutePipelineResponse {
                 job_id,
                 status: "completed".to_string(),

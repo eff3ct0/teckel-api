@@ -4,6 +4,8 @@ use teckel_engine::backend::Backend;
 use teckel_engine::dry_run;
 use teckel_engine::executor::PipelineExecutor;
 use teckel_model::TeckelError;
+use teckel_polars::PolarsBackend;
+use teckel_spark::SparkConnectBackend;
 
 /// Parse a Teckel YAML pipeline and execute it with the default DataFusion backend.
 ///
@@ -12,6 +14,31 @@ use teckel_model::TeckelError;
 /// ```
 pub async fn etl(yaml: &str, variables: &BTreeMap<String, String>) -> Result<(), TeckelError> {
     etl_with(yaml, variables, DataFusionBackend::new()).await
+}
+
+/// Execute a pipeline dispatching to the backend selected by name.
+///
+/// Accepted values: `"datafusion"` (default, also matches empty string),
+/// `"polars"`, `"spark"`. For `spark`, the Spark Connect URL is read from
+/// the `SPARK_CONNECT_URL` env var (fallback: `sc://127.0.0.1:15002/`).
+pub async fn etl_by_name(
+    yaml: &str,
+    variables: &BTreeMap<String, String>,
+    backend: &str,
+) -> Result<(), TeckelError> {
+    match backend {
+        "" | "datafusion" => etl_with(yaml, variables, DataFusionBackend::new()).await,
+        "polars" => etl_with(yaml, variables, PolarsBackend::new()).await,
+        "spark" => {
+            let url = std::env::var("SPARK_CONNECT_URL")
+                .unwrap_or_else(|_| "sc://127.0.0.1:15002/".to_string());
+            let spark = SparkConnectBackend::new(&url).await?;
+            etl_with(yaml, variables, spark).await
+        }
+        other => Err(TeckelError::Execution(format!(
+            "unknown backend: {other} (expected datafusion|polars|spark)"
+        ))),
+    }
 }
 
 /// Parse a Teckel YAML pipeline and execute it with a custom backend.

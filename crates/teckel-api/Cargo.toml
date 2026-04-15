@@ -12,6 +12,8 @@ teckel-model = { workspace = true }
 teckel-parser = { workspace = true }
 teckel-engine = { workspace = true }
 teckel-datafusion = { workspace = true }
+teckel-polars = { workspace = true }
+teckel-spark = { workspace = true }
 tokio = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }

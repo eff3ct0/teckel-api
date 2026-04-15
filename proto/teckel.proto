@@ -74,6 +74,9 @@ message HealthResponse {
 message PipelineRequest {
   string yaml = 1;
   map<string, string> variables = 2;
+  // Execution backend: "datafusion" (default), "polars", or "spark".
+  // Empty string falls back to "datafusion".
+  string backend = 3;
 }
 
 message ValidateResponse {
