@@ -9,13 +9,19 @@ use teckel_model::types::*;
 
 // ── Helpers ─────────────────────────────────────────────────────
 
-async fn employees_cache() -> (teckel_spark::SparkConnectBackend, BTreeMap<String, spark_connect_rs::dataframe::DataFrame>) {
+async fn employees_cache() -> (
+    teckel_spark::SparkConnectBackend,
+    BTreeMap<String, spark_connect_rs::dataframe::DataFrame>,
+) {
     let backend = common::backend().await;
     let cache = common::read_to_cache(&backend, "employees", &common::employees_input()).await;
     (backend, cache)
 }
 
-async fn two_table_cache() -> (teckel_spark::SparkConnectBackend, BTreeMap<String, spark_connect_rs::dataframe::DataFrame>) {
+async fn two_table_cache() -> (
+    teckel_spark::SparkConnectBackend,
+    BTreeMap<String, spark_connect_rs::dataframe::DataFrame>,
+) {
     let backend = common::backend().await;
     let mut cache = common::read_to_cache(&backend, "employees", &common::employees_input()).await;
     let dept_df = backend
@@ -221,7 +227,8 @@ async fn transform_rename_columns() {
 async fn transform_sql() {
     let (backend, cache) = employees_cache().await;
     let source = Source::Sql(SqlTransform {
-        query: "SELECT department, AVG(salary) AS avg_salary FROM employees GROUP BY department".to_string(),
+        query: "SELECT department, AVG(salary) AS avg_salary FROM employees GROUP BY department"
+            .to_string(),
         views: vec!["employees".to_string()],
     });
     let result = backend.apply(&source, &cache).await.unwrap();

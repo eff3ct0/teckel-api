@@ -9,8 +9,22 @@ on:
 jobs:
   trigger:
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' }}
     steps:
+      - name: Check token
+        id: check
+        env:
+          TOKEN: ${{ secrets.DOCS_DEPLOY_TOKEN }}
+        run: |
+          if [ -n "$TOKEN" ]; then
+            echo "has_token=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_token=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::DOCS_DEPLOY_TOKEN secret not configured — skipping dispatch"
+          fi
+
       - name: Trigger teckel-spec docs deploy
+        if: steps.check.outputs.has_token == 'true'
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.DOCS_DEPLOY_TOKEN }}

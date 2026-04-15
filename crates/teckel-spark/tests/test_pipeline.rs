@@ -171,5 +171,8 @@ output:
     assert_eq!(count, 5, "top 5 employees");
 
     let cols = df.columns().await.unwrap();
-    assert!(cols.contains(&"bonus".to_string()), "bonus column should exist");
+    assert!(
+        cols.contains(&"bonus".to_string()),
+        "bonus column should exist"
+    );
 }
