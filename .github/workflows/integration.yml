@@ -21,14 +21,12 @@ jobs:
       matrix:
         include:
           - backend: spark
-            image: apache/spark:3.5.3
-            command: /opt/spark/sbin/start-connect-server.sh --master local[*]
             port: 15002
+            test_data_dir: /data
             experimental: false
           - backend: sail
-            image: ghcr.io/lakehq/sail:latest
-            command: ""
-            port: 15002
+            port: 50051
+            test_data_dir: ${{ github.workspace }}/crates/teckel-spark/testdata
             experimental: true
 
     steps:
@@ -43,20 +41,30 @@ jobs:
       - name: Symlink teckel-rs to expected path
         run: ln -s "$GITHUB_WORKSPACE/_teckel-rs" "$GITHUB_WORKSPACE/../teckel-rs"
 
-      - name: Start ${{ matrix.backend }} server
+      # ── Backend: Spark (Docker) ────────────────────────────────
+      - name: Start Spark Connect server (Docker)
+        if: matrix.backend == 'spark'
         run: |
-          if [ -n "${{ matrix.command }}" ]; then
-            docker run -d --name spark-connect \
-              -p ${{ matrix.port }}:${{ matrix.port }} \
-              -v "${{ github.workspace }}/crates/teckel-spark/testdata:/data:ro" \
-              ${{ matrix.image }} \
-              ${{ matrix.command }}
-          else
-            docker run -d --name spark-connect \
-              -p ${{ matrix.port }}:${{ matrix.port }} \
-              -v "${{ github.workspace }}/crates/teckel-spark/testdata:/data:ro" \
-              ${{ matrix.image }}
-          fi
+          docker run -d --name spark-connect \
+            -p ${{ matrix.port }}:${{ matrix.port }} \
+            -v "${{ github.workspace }}/crates/teckel-spark/testdata:/data:ro" \
+            apache/spark:3.5.3 \
+            /opt/spark/sbin/start-connect-server.sh --master 'local[*]'
+
+      # ── Backend: Sail (pip, no Docker) ─────────────────────────
+      - name: Setup Python
+        if: matrix.backend == 'sail'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install and start Sail Spark Connect server
+        if: matrix.backend == 'sail'
+        run: |
+          pip install pysail==0.6.0
+          nohup sail spark server --port ${{ matrix.port }} \
+            > "$GITHUB_WORKSPACE/sail.log" 2>&1 &
+          echo $! > "$GITHUB_WORKSPACE/sail.pid"
 
       - name: Wait for Spark Connect to be ready
         run: |
@@ -70,7 +78,6 @@ jobs:
             sleep 5
           done
           echo "ERROR: ${{ matrix.backend }} did not start within 150s"
-          docker logs spark-connect
           exit 1
 
       - name: Install protoc
@@ -99,14 +106,25 @@ jobs:
       - name: Run integration tests
         env:
           SPARK_CONNECT_URL: "sc://127.0.0.1:${{ matrix.port }}/"
-          TEST_DATA_DIR: "/data"
+          TEST_DATA_DIR: ${{ matrix.test_data_dir }}
           RUST_LOG: info
         run: cargo test -p teckel-spark --features integration -- --nocapture
 
-      - name: Collect server logs on failure
-        if: failure()
-        run: docker logs spark-connect
+      - name: Collect Spark logs on failure
+        if: failure() && matrix.backend == 'spark'
+        run: docker logs spark-connect || true
 
-      - name: Stop server
-        if: always()
+      - name: Collect Sail logs on failure
+        if: failure() && matrix.backend == 'sail'
+        run: cat "$GITHUB_WORKSPACE/sail.log" || true
+
+      - name: Stop Spark server
+        if: always() && matrix.backend == 'spark'
         run: docker rm -f spark-connect || true
+
+      - name: Stop Sail server
+        if: always() && matrix.backend == 'sail'
+        run: |
+          if [ -f "$GITHUB_WORKSPACE/sail.pid" ]; then
+            kill "$(cat "$GITHUB_WORKSPACE/sail.pid")" || true
+          fi
