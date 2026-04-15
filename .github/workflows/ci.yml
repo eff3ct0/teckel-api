@@ -15,11 +15,10 @@ jobs:
   build:
     name: Build & Test (${{ matrix.rust }})
     runs-on: ubuntu-latest
-    continue-on-error: ${{ matrix.rust == 'nightly' }}
     strategy:
       fail-fast: false
       matrix:
-        rust: [stable, nightly]
+        rust: [stable]
 
     steps:
       - uses: actions/checkout@v4
