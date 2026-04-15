@@ -24,6 +24,7 @@ struct JobState {
     yaml: String,
     variables: BTreeMap<String, String>,
     backend: String,
+    backend_options: BTreeMap<String, String>,
     cancel: tokio_util::sync::CancellationToken,
 }
 
@@ -144,6 +145,7 @@ impl TeckelService for TeckelWorker {
             yaml: req.yaml,
             variables,
             backend: req.backend,
+            backend_options: req.backend_options.into_iter().collect(),
             cancel: cancel.clone(),
         };
 
@@ -165,12 +167,13 @@ impl TeckelService for TeckelWorker {
                 return;
             }
 
-            let (yaml, variables, backend) = {
+            let (yaml, variables, backend, backend_options) = {
                 let job = jobs.get(&jid).unwrap();
                 (
                     job.yaml.clone(),
                     job.variables.clone(),
                     job.backend.clone(),
+                    job.backend_options.clone(),
                 )
             };
 
@@ -191,7 +194,7 @@ impl TeckelService for TeckelWorker {
                     }
                     return;
                 }
-                result = teckel_api::etl_by_name(&yaml, &variables, &backend) => result,
+                result = teckel_api::etl_by_name(&yaml, &variables, &backend, &backend_options) => result,
             };
 
             let duration_ms = start.elapsed().as_millis() as i64;
@@ -425,7 +428,10 @@ impl TeckelService for TeckelWorker {
             .map(|s| s.backend.clone())
             .unwrap_or_default();
 
-        match teckel_api::etl_by_name(&req.yaml, &variables, &backend).await {
+        // Session API doesn't carry per-request backend options yet;
+        // Spark falls back to SPARK_CONNECT_URL env on the worker.
+        let backend_options: BTreeMap<String, String> = BTreeMap::new();
+        match teckel_api::etl_by_name(&req.yaml, &variables, &backend, &backend_options).await {
             Ok(()) => Ok(Response::new(proto::ExecutePipelineResponse {
                 job_id,
                 status: "completed".to_string(),

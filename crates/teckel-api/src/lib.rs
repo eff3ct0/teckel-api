@@ -19,19 +19,24 @@ pub async fn etl(yaml: &str, variables: &BTreeMap<String, String>) -> Result<(),
 /// Execute a pipeline dispatching to the backend selected by name.
 ///
 /// Accepted values: `"datafusion"` (default, also matches empty string),
-/// `"polars"`, `"spark"`. For `spark`, the Spark Connect URL is read from
-/// the `SPARK_CONNECT_URL` env var (fallback: `sc://127.0.0.1:15002/`).
+/// `"polars"`, `"spark"`. For `spark`, the Spark Connect URL is taken
+/// from `options["spark_connect_url"]` if present, otherwise from the
+/// `SPARK_CONNECT_URL` env var (fallback: `sc://127.0.0.1:15002/`).
 pub async fn etl_by_name(
     yaml: &str,
     variables: &BTreeMap<String, String>,
     backend: &str,
+    options: &BTreeMap<String, String>,
 ) -> Result<(), TeckelError> {
     match backend {
         "" | "datafusion" => etl_with(yaml, variables, DataFusionBackend::new()).await,
         "polars" => etl_with(yaml, variables, PolarsBackend::new()).await,
         "spark" => {
-            let url = std::env::var("SPARK_CONNECT_URL")
-                .unwrap_or_else(|_| "sc://127.0.0.1:15002/".to_string());
+            let url = options
+                .get("spark_connect_url")
+                .cloned()
+                .or_else(|| std::env::var("SPARK_CONNECT_URL").ok())
+                .unwrap_or_else(|| "sc://127.0.0.1:15002/".to_string());
             let spark = SparkConnectBackend::new(&url).await?;
             etl_with(yaml, variables, spark).await
         }

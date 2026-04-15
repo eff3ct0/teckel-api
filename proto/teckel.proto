@@ -77,6 +77,9 @@ message PipelineRequest {
   // Execution backend: "datafusion" (default), "polars", or "spark".
   // Empty string falls back to "datafusion".
   string backend = 3;
+  // Backend-specific options. For spark: "spark_connect_url".
+  // Falls back to env vars on the server if missing.
+  map<string, string> backend_options = 4;
 }
 
 message ValidateResponse {
