@@ -22,19 +22,32 @@ jobs:
         include:
           - backend: spark
             spark_version: 3.4.4
+            scala_binary: "2.12"
+            java_version: "11"
             port: 15002
             test_data_dir: ${{ github.workspace }}/crates/teckel-spark/testdata
             experimental: false
           - backend: spark
             spark_version: 3.5.3
+            scala_binary: "2.12"
+            java_version: "17"
             port: 15002
             test_data_dir: ${{ github.workspace }}/crates/teckel-spark/testdata
             experimental: false
           - backend: spark
             spark_version: 3.5.4
+            scala_binary: "2.12"
+            java_version: "17"
             port: 15002
             test_data_dir: ${{ github.workspace }}/crates/teckel-spark/testdata
             experimental: false
+          - backend: spark
+            spark_version: 4.0.0
+            scala_binary: "2.13"
+            java_version: "17"
+            port: 15002
+            test_data_dir: ${{ github.workspace }}/crates/teckel-spark/testdata
+            experimental: true
           - backend: sail
             port: 50051
             test_data_dir: ${{ github.workspace }}/crates/teckel-spark/testdata
@@ -58,15 +71,21 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: ${{ matrix.java_version }}
 
       - name: Install and start Spark Connect server
         if: matrix.backend == 'spark'
         env:
           SPARK_VERSION: ${{ matrix.spark_version }}
+          SCALA_BINARY: ${{ matrix.scala_binary }}
           SPARK_HADOOP: hadoop3
         run: |
-          curl -fsSL "https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-${SPARK_HADOOP}.tgz" \
+          if [ "$SCALA_BINARY" = "2.13" ]; then
+            ARCHIVE="spark-${SPARK_VERSION}-bin-${SPARK_HADOOP}-scala2.13.tgz"
+          else
+            ARCHIVE="spark-${SPARK_VERSION}-bin-${SPARK_HADOOP}.tgz"
+          fi
+          curl -fsSL "https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/${ARCHIVE}" \
             -o /tmp/spark.tgz
           mkdir -p "$HOME/spark"
           tar -xzf /tmp/spark.tgz -C "$HOME/spark" --strip-components=1
@@ -75,7 +94,7 @@ jobs:
           export SPARK_NO_DAEMONIZE=0
           "$SPARK_HOME/sbin/start-connect-server.sh" \
             --master 'local[*]' \
-            --packages "org.apache.spark:spark-connect_2.12:${SPARK_VERSION}"
+            --packages "org.apache.spark:spark-connect_${SCALA_BINARY}:${SPARK_VERSION}"
 
       # ── Backend: Sail (pip, no Docker) ─────────────────────────
       - name: Setup Python
