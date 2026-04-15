@@ -22,7 +22,7 @@ jobs:
         include:
           - backend: spark
             port: 15002
-            test_data_dir: /data
+            test_data_dir: ${{ github.workspace }}/crates/teckel-spark/testdata
             experimental: false
           - backend: sail
             port: 50051
@@ -41,15 +41,30 @@ jobs:
       - name: Symlink teckel-rs to expected path
         run: ln -s "$GITHUB_WORKSPACE/_teckel-rs" "$GITHUB_WORKSPACE/../teckel-rs"
 
-      # ── Backend: Spark (Docker) ────────────────────────────────
-      - name: Start Spark Connect server (Docker)
+      # ── Backend: Spark (binary, no Docker) ─────────────────────
+      - name: Setup Java (for Spark)
         if: matrix.backend == 'spark'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install and start Spark Connect server
+        if: matrix.backend == 'spark'
+        env:
+          SPARK_VERSION: 3.5.3
+          SPARK_HADOOP: hadoop3
         run: |
-          docker run -d --name spark-connect \
-            -p ${{ matrix.port }}:${{ matrix.port }} \
-            -v "${{ github.workspace }}/crates/teckel-spark/testdata:/data:ro" \
-            apache/spark:3.5.3 \
-            /opt/spark/sbin/start-connect-server.sh --master 'local[*]'
+          curl -fsSL "https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-${SPARK_HADOOP}.tgz" \
+            -o /tmp/spark.tgz
+          mkdir -p "$HOME/spark"
+          tar -xzf /tmp/spark.tgz -C "$HOME/spark" --strip-components=1
+          echo "SPARK_HOME=$HOME/spark" >> "$GITHUB_ENV"
+          export SPARK_HOME="$HOME/spark"
+          export SPARK_NO_DAEMONIZE=0
+          "$SPARK_HOME/sbin/start-connect-server.sh" \
+            --master 'local[*]' \
+            --packages "org.apache.spark:spark-connect_2.12:${SPARK_VERSION}"
 
       # ── Backend: Sail (pip, no Docker) ─────────────────────────
       - name: Setup Python
@@ -112,7 +127,10 @@ jobs:
 
       - name: Collect Spark logs on failure
         if: failure() && matrix.backend == 'spark'
-        run: docker logs spark-connect || true
+        run: |
+          if [ -d "$SPARK_HOME/logs" ]; then
+            tail -n +1 "$SPARK_HOME"/logs/* || true
+          fi
 
       - name: Collect Sail logs on failure
         if: failure() && matrix.backend == 'sail'
@@ -120,7 +138,10 @@ jobs:
 
       - name: Stop Spark server
         if: always() && matrix.backend == 'spark'
-        run: docker rm -f spark-connect || true
+        run: |
+          if [ -n "$SPARK_HOME" ] && [ -x "$SPARK_HOME/sbin/stop-connect-server.sh" ]; then
+            "$SPARK_HOME/sbin/stop-connect-server.sh" || true
+          fi
 
       - name: Stop Sail server
         if: always() && matrix.backend == 'sail'
