@@ -4,7 +4,7 @@ mod worker;
 
 use axum::{routing, Router};
 use std::net::SocketAddr;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tracing_subscriber::EnvFilter;
 
 use job::JobStore;
@@ -40,10 +40,22 @@ async fn main() {
     let pool = WorkerPool::new(store.clone(), max_concurrency);
     let state = AppState { store, pool };
 
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+    // TECKEL_CORS_ORIGINS: comma-separated list of allowed origins, or "*" for any.
+    let cors_origins = std::env::var("TECKEL_CORS_ORIGINS").unwrap_or_else(|_| "*".to_string());
+    let cors = CorsLayer::new().allow_methods(Any).allow_headers(Any);
+    let cors = if cors_origins.trim() == "*" {
+        tracing::warn!("CORS allow_origin = * (any). Set TECKEL_CORS_ORIGINS to restrict.");
+        cors.allow_origin(Any)
+    } else {
+        let origins: Vec<_> = cors_origins
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.parse().expect("invalid origin in TECKEL_CORS_ORIGINS"))
+            .collect();
+        tracing::info!(?origins, "CORS allow_origin restricted");
+        cors.allow_origin(AllowOrigin::list(origins))
+    };
 
     let app = Router::new()
         .route("/api/health", routing::get(routes::health))

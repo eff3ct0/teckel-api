@@ -10,7 +10,7 @@ mod service;
 use std::net::SocketAddr;
 use teckel_remote::TeckelServiceServer;
 use tonic::transport::Server;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -34,12 +34,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr: SocketAddr = format!("{host}:{port}").parse()?;
     let worker = service::TeckelWorker::new(max_concurrency);
 
-    // gRPC-Web + CORS for browser access
+    // gRPC-Web + CORS for browser access.
+    // TECKEL_CORS_ORIGINS: comma-separated list of allowed origins, or "*" for any.
+    let cors_origins = std::env::var("TECKEL_CORS_ORIGINS").unwrap_or_else(|_| "*".to_string());
     let cors = CorsLayer::new()
-        .allow_origin(Any)
         .allow_methods(Any)
         .allow_headers(Any)
         .expose_headers(Any);
+    let cors = if cors_origins.trim() == "*" {
+        tracing::warn!("CORS allow_origin = * (any). Set TECKEL_CORS_ORIGINS to restrict.");
+        cors.allow_origin(Any)
+    } else {
+        let origins: Vec<_> = cors_origins
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.parse().expect("invalid origin in TECKEL_CORS_ORIGINS"))
+            .collect();
+        tracing::info!(?origins, "CORS allow_origin restricted");
+        cors.allow_origin(AllowOrigin::list(origins))
+    };
 
     let grpc_web = tonic_web::GrpcWebLayer::new();
 

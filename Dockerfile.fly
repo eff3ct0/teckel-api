@@ -18,7 +18,7 @@ teckel-parser = { path = "/build/teckel-rs/crates/teckel-parser" }\n' \
 
 RUN cargo build -p teckel-worker --release
 
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /build/teckel-api/target/release/teckel-worker /usr/local/bin/teckel-worker
