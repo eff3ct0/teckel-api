@@ -80,7 +80,11 @@ jobs:
           SCALA_BINARY: ${{ matrix.scala_binary }}
           SPARK_HADOOP: hadoop3
         run: |
-          if [ "$SCALA_BINARY" = "2.13" ]; then
+          MAJOR="${SPARK_VERSION%%.*}"
+          if [ "$MAJOR" -ge 4 ]; then
+            # Spark 4+: Scala 2.13 is the only build; no suffix
+            ARCHIVE="spark-${SPARK_VERSION}-bin-${SPARK_HADOOP}.tgz"
+          elif [ "$SCALA_BINARY" = "2.13" ]; then
             ARCHIVE="spark-${SPARK_VERSION}-bin-${SPARK_HADOOP}-scala2.13.tgz"
           else
             ARCHIVE="spark-${SPARK_VERSION}-bin-${SPARK_HADOOP}.tgz"
