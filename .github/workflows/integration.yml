@@ -1,0 +1,112 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+
+jobs:
+  integration:
+    name: Integration (${{ matrix.backend }})
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - backend: spark
+            image: apache/spark:3.5.3
+            command: /opt/spark/sbin/start-connect-server.sh --master local[*]
+            port: 15002
+            experimental: false
+          - backend: sail
+            image: ghcr.io/lakehq/sail:latest
+            command: ""
+            port: 15002
+            experimental: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout teckel-rs (path dependency)
+        uses: actions/checkout@v4
+        with:
+          repository: eff3ct0/teckel-rs
+          path: _teckel-rs
+
+      - name: Symlink teckel-rs to expected path
+        run: ln -s "$GITHUB_WORKSPACE/_teckel-rs" "$GITHUB_WORKSPACE/../teckel-rs"
+
+      - name: Start ${{ matrix.backend }} server
+        run: |
+          if [ -n "${{ matrix.command }}" ]; then
+            docker run -d --name spark-connect \
+              -p ${{ matrix.port }}:${{ matrix.port }} \
+              -v "${{ github.workspace }}/crates/teckel-spark/testdata:/data:ro" \
+              ${{ matrix.image }} \
+              ${{ matrix.command }}
+          else
+            docker run -d --name spark-connect \
+              -p ${{ matrix.port }}:${{ matrix.port }} \
+              -v "${{ github.workspace }}/crates/teckel-spark/testdata:/data:ro" \
+              ${{ matrix.image }}
+          fi
+
+      - name: Wait for Spark Connect to be ready
+        run: |
+          echo "Waiting for ${{ matrix.backend }} on port ${{ matrix.port }}..."
+          for i in $(seq 1 30); do
+            if nc -z 127.0.0.1 ${{ matrix.port }} 2>/dev/null; then
+              echo "${{ matrix.backend }} is ready after ~$((i * 5))s"
+              exit 0
+            fi
+            echo "  attempt $i/30..."
+            sleep 5
+          done
+          echo "ERROR: ${{ matrix.backend }} did not start within 150s"
+          docker logs spark-connect
+          exit 1
+
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Configure Git for private dependencies
+        run: |
+          git config --global url."https://${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-integration-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-integration-
+
+      - name: Run integration tests
+        env:
+          SPARK_CONNECT_URL: "sc://127.0.0.1:${{ matrix.port }}/"
+          TEST_DATA_DIR: "/data"
+          RUST_LOG: info
+        run: cargo test -p teckel-spark --features integration -- --nocapture
+
+      - name: Collect server logs on failure
+        if: failure()
+        run: docker logs spark-connect
+
+      - name: Stop server
+        if: always()
+        run: docker rm -f spark-connect || true
