@@ -42,7 +42,7 @@ jobs:
             test_data_dir: ${{ github.workspace }}/crates/teckel-spark/testdata
             experimental: false
           - backend: spark
-            spark_version: 4.0.0
+            spark_version: 4.1.1
             scala_binary: "2.13"
             java_version: "17"
             port: 15002
