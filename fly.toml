@@ -1,0 +1,28 @@
+# fly.toml app configuration file generated for teckel-worker-demo on 2026-04-15T15:58:13+02:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'teckel-worker-demo'
+primary_region = 'cdg'
+
+[build]
+  dockerfile = 'Dockerfile.fly'
+
+[env]
+  RUST_LOG = 'info'
+  TECKEL_HOST = '0.0.0.0'
+  TECKEL_PORT = '50051'
+
+[http_service]
+  internal_port = 50051
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[[vm]]
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 512

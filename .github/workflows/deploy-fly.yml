@@ -1,0 +1,63 @@
+name: Deploy to Fly
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/**"
+      - "proto/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "Dockerfile.fly"
+      - "fly.toml"
+      - ".github/workflows/deploy-fly.yml"
+  workflow_dispatch:
+    inputs:
+      teckel_rs_ref:
+        description: "teckel-rs ref (branch, tag or commit)"
+        required: false
+        default: "main"
+
+concurrency:
+  group: deploy-fly
+  cancel-in-progress: true
+
+env:
+  FLY_APP: teckel-worker-demo
+  IMAGE: registry.fly.io/teckel-worker-demo
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Log in to Fly registry
+        run: flyctl auth docker
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Build & push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.fly
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+          build-args: |
+            TECKEL_RS_REF=${{ github.event.inputs.teckel_rs_ref || 'main' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy to Fly
+        run: flyctl deploy --app "$FLY_APP" --image "$IMAGE:${{ github.sha }}" --ha=false
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
