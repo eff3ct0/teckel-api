@@ -13,7 +13,7 @@ env:
 
 jobs:
   integration:
-    name: Integration (${{ matrix.backend }})
+    name: Integration (${{ matrix.backend }}${{ matrix.spark_version && format(' {0}', matrix.spark_version) || '' }})
     runs-on: ubuntu-latest
     continue-on-error: ${{ matrix.experimental }}
     strategy:
@@ -21,6 +21,17 @@ jobs:
       matrix:
         include:
           - backend: spark
+            spark_version: 3.4.4
+            port: 15002
+            test_data_dir: ${{ github.workspace }}/crates/teckel-spark/testdata
+            experimental: false
+          - backend: spark
+            spark_version: 3.5.3
+            port: 15002
+            test_data_dir: ${{ github.workspace }}/crates/teckel-spark/testdata
+            experimental: false
+          - backend: spark
+            spark_version: 3.5.4
             port: 15002
             test_data_dir: ${{ github.workspace }}/crates/teckel-spark/testdata
             experimental: false
@@ -52,7 +63,7 @@ jobs:
       - name: Install and start Spark Connect server
         if: matrix.backend == 'spark'
         env:
-          SPARK_VERSION: 3.5.3
+          SPARK_VERSION: ${{ matrix.spark_version }}
           SPARK_HADOOP: hadoop3
         run: |
           curl -fsSL "https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-${SPARK_HADOOP}.tgz" \
